@@ -1,0 +1,1 @@
+Trên màn hình sẽ xuất hiện các bức tường ảo đang lao tới phía người chơi. Trên bức tường có đục một cái lỗ hình dáng kỳ quặc (giơ tay chữ V, đứng một chân, nghiêng người sang trái...). Nhiệm vụ của bạn là uốn éo cơ thể sao cho khớp với cái lỗ đó để "chui" qua.
