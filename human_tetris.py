@@ -8,7 +8,7 @@ import time
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
-# Hàm tính góc (Không đổi)
+# Hàm tính góc (Dùng chung cho cả 2 tay)
 def calculate_angle(a, b, c):
     a = np.array(a)
     b = np.array(b)
@@ -19,126 +19,139 @@ def calculate_angle(a, b, c):
         angle = 360 - angle
     return angle
 
-# --- DỮ LIỆU CÁC TƯ THẾ (LEVELS) ---
-# Bạn có thể tự nghĩ thêm các tư thế khác vào đây
+# --- DỮ LIỆU CÁC TƯ THẾ (LEVEL 2 - 2 TAY) ---
+# Quy ước: 170-180 là tay thẳng, 90 là vuông góc, 20-30 là khép nách
 poses_dict = {
-    "Chao Co (Tay Thang)": {
-        "target": 170,  # Góc mong muốn
-        "tolerance": 20 # Dung sai
+    "Luc Si (2 Tay Vuong)": {
+        "left": 90, 
+        "right": 90,
+        "tolerance": 20
     },
-    "Luc Si (Vuong Goc)": {
-        "target": 90,
-        "tolerance": 15
+    "Chao Co (Trai Vuong - Phai Thang)": {
+        "left": 90,
+        "right": 170,
+        "tolerance": 20
     },
-    "Khep Nach (Tay Duoi)": {
-        "target": 30,
+    "Chim Bay (2 Tay Thang)": {
+        "left": 170,
+        "right": 170,
+        "tolerance": 20
+    },
+    "Cheo Canh (Trai Thang - Phai Vuong)": {
+        "left": 170,
+        "right": 90,
         "tolerance": 20
     }
 }
 
 # --- BIẾN GAME ---
 score = 0
-current_pose_name = random.choice(list(poses_dict.keys())) # Chọn bừa 1 tư thế đầu tiên
+# Chọn ngẫu nhiên tư thế đầu tiên
+current_pose_name = random.choice(list(poses_dict.keys()))
 start_time = time.time()
-game_duration = 5 # Mỗi lượt chơi có 5 giây để chuẩn bị
+game_duration = 5 # Thời gian mỗi lượt
 
 cap = cv2.VideoCapture(0)
-cv2.namedWindow('Game Tetris - Final', cv2.WINDOW_NORMAL)
+# Đặt tên cửa sổ mới cho ngầu
+cv2.namedWindow('Game Tetris - Double Trouble', cv2.WINDOW_NORMAL)
 
 with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
         
-        # Xử lý ảnh
+        # Lật ngược ảnh lại cho giống gương (Mirror) để dễ chơi hơn
+        frame = cv2.flip(frame, 1)
+
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
         results = pose.process(image)
         image.flags.writeable = True
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # Lấy kích thước màn hình để vẽ chữ cho đẹp
         h, w, _ = image.shape
         
         try:
             landmarks = results.pose_landmarks.landmark
             
-            # Lấy toạ độ tay TRÁI (Làm mẫu tay trái thôi nhé)
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-            wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+            # --- LẤY TOẠ ĐỘ TAY TRÁI (LEFT) ---
+            l_shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+            l_elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+            l_wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+            angle_left = calculate_angle(l_shoulder, l_elbow, l_wrist)
             
-            # Tính góc hiện tại của người chơi
-            current_angle = calculate_angle(shoulder, elbow, wrist)
+            # --- LẤY TOẠ ĐỘ TAY PHẢI (RIGHT) ---
+            r_shoulder = [landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value].y]
+            r_elbow = [landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y]
+            r_wrist = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
+            angle_right = calculate_angle(r_shoulder, r_elbow, r_wrist)
             
-            # --- LOGIC GAME LOOP ---
-            # 1. Tính thời gian còn lại
+            # --- LOGIC GAME ---
             elapsed_time = time.time() - start_time
             time_left = game_duration - elapsed_time
             
-            # Lấy thông tin tư thế hiện tại
-            target = poses_dict[current_pose_name]["target"]
+            # Lấy mục tiêu (Target)
+            target_l = poses_dict[current_pose_name]["left"]
+            target_r = poses_dict[current_pose_name]["right"]
             tol = poses_dict[current_pose_name]["tolerance"]
             
-            # Màu sắc mặc định
-            color_status = (0, 0, 255) # Đỏ
-            status_text = "Chuan bi..."
+            # Kiểm tra từng tay
+            left_ok = (target_l - tol) < angle_left < (target_l + tol)
+            right_ok = (target_r - tol) < angle_right < (target_r + tol)
             
-            # Kiểm tra xem người chơi có làm đúng không (Real-time feedback)
-            if (target - tol) < current_angle < (target + tol):
-                color_status = (0, 255, 0) # Xanh lá
+            # Màu sắc phản hồi (Feedback)
+            color_left = (0, 255, 0) if left_ok else (0, 0, 255) # Xanh nếu đúng, Đỏ nếu sai
+            color_right = (0, 255, 0) if right_ok else (0, 0, 255)
+            
+            status_text = "Co len!"
+            main_color = (0, 0, 255) # Đỏ
+            
+            # CẢ HAI TAY ĐỀU PHẢI ĐÚNG
+            if left_ok and right_ok:
                 status_text = "Giu nguyen!"
+                main_color = (0, 255, 0) # Xanh lá
             
-            # 2. Xử lý khi hết giờ (Hết 5 giây)
+            # Xử lý hết giờ
             if time_left <= 0:
-                # Kiểm tra kết quả lần cuối
-                if (target - tol) < current_angle < (target + tol):
-                    score += 1 # Cộng điểm
-                    feedback = "GHI DIEM!"
-                    box_color = (0, 255, 0)
+                if left_ok and right_ok:
+                    score += 1
+                    print(f"GHI DIEM! Tong: {score}")
                 else:
-                    feedback = "HUT ROI!"
-                    box_color = (0, 0, 255)
+                    print("HUT ROI!")
                     
-                # Reset lại thời gian và chọn tư thế mới
                 start_time = time.time()
                 current_pose_name = random.choice(list(poses_dict.keys()))
-                
-                # (Mẹo nhỏ) Hiện kết quả trong 1 giây đệm (bạn có thể cải tiến sau)
-                print(f"Ket qua: {feedback}. Diem hien tai: {score}")
 
-            # --- VẼ GIAO DIỆN (UI) ---
-            
-            # Vẽ thanh thời gian chạy ngang màn hình
+            # --- VẼ GIAO DIỆN ---
+            # Thanh thời gian
             time_bar_width = int((time_left / game_duration) * w)
-            cv2.rectangle(image, (0, h-20), (time_bar_width, h), color_status, -1)
+            cv2.rectangle(image, (0, h-20), (time_bar_width, h), main_color, -1)
             
-            # Vẽ hộp thông tin góc trái
-            cv2.rectangle(image, (0,0), (350, 120), (245,117,16), -1)
+            # Hộp thông tin
+            cv2.rectangle(image, (0,0), (450, 140), (245,117,16), -1)
+            cv2.putText(image, f'NV: {current_pose_name}', (15,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1, cv2.LINE_AA)
+            cv2.putText(image, f'DIEM: {score}', (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
             
-            # Tên tư thế cần làm
-            cv2.putText(image, 'NHIEM VU:', (15,30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 1, cv2.LINE_AA)
-            cv2.putText(image, current_pose_name, (15,70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2, cv2.LINE_AA)
-            
-            # Điểm số
-            cv2.putText(image, f'DIEM: {score}', (15, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2, cv2.LINE_AA)
-            
-            # Đồng hồ đếm ngược to đùng ở giữa màn hình
-            cv2.putText(image, str(int(time_left)+1), (w//2, h//2), cv2.FONT_HERSHEY_SIMPLEX, 4, color_status, 4, cv2.LINE_AA)
+            # Đồng hồ đếm ngược
+            cv2.putText(image, str(int(time_left)+1), (w//2, h//2), cv2.FONT_HERSHEY_SIMPLEX, 4, main_color, 4, cv2.LINE_AA)
 
-            # Vẽ góc lên khuỷu tay
-            cv2.putText(image, str(int(current_angle)), 
-                        tuple(np.multiply(elbow, [w, h]).astype(int)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, color_status, 2, cv2.LINE_AA)
+            # Vẽ số đo góc lên 2 khuỷu tay
+            # Tay Trái
+            cv2.putText(image, str(int(angle_left)), 
+                        tuple(np.multiply(l_elbow, [w, h]).astype(int)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, color_left, 2, cv2.LINE_AA)
+            # Tay Phải
+            cv2.putText(image, str(int(angle_right)), 
+                        tuple(np.multiply(r_elbow, [w, h]).astype(int)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, color_right, 2, cv2.LINE_AA)
 
         except Exception as e:
             pass
 
-        # Vẽ xương
         if results.pose_landmarks:
             mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             
-        cv2.imshow('Game Tetris - Final', image)
+        cv2.imshow('Game Tetris - Double Trouble', image)
 
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
