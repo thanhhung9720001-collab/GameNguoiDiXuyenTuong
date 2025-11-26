@@ -12,7 +12,7 @@ mp_pose = mp.solutions.pose
 arm_poses = {
     "Luc Si (2 Tay Vuong)": {"left": 90, "right": 90, "tolerance": 25},
     "Chim Bay (2 Tay Thang)": {"left": 170, "right": 170, "tolerance": 25},
-    "Cheo Canh (Trai Thang - Phai Vuong)": {"left": 170, "right": 90, "tolerance": 25},
+    "CSGT (1 Thang 1 Vuong)": {"left": 170, "right": 90, "tolerance": 25},
 }
 
 # Danh sách tư thế CHÂN (Dựa trên độ lệch Y của hông)
