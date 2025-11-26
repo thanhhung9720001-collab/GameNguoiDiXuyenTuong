@@ -2,34 +2,25 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-# Khởi tạo MediaPipe
+# Khởi tạo
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
-# --- PHẦN MỚI 1: HÀM TÍNH GÓC ---
+# Hàm tính góc (Giữ nguyên)
 def calculate_angle(a, b, c):
-    """
-    Hàm này nhận vào 3 điểm toạ độ: a (đầu), b (giữa), c (cuối).
-    Ví dụ: a=Vai, b=Khuỷu tay, c=Cổ tay.
-    Nó sẽ trả về góc tạo bởi 3 điểm này (tính bằng độ).
-    """
-    a = np.array(a) # Điểm đầu
-    b = np.array(b) # Điểm giữa (đỉnh góc)
-    c = np.array(c) # Điểm cuối
-    
-    # Công thức toán học (ArcTangent) để tính góc trong không gian 2D
+    a = np.array(a)
+    b = np.array(b)
+    c = np.array(c)
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians*180.0/np.pi) # Đổi từ radian sang độ (degree)
-    
-    # Vì cánh tay con người không bẻ ngược được quá 360 độ, 
-    # nên ta đưa về khoảng 0-180 độ cho dễ hiểu.
+    angle = np.abs(radians*180.0/np.pi)
     if angle > 180.0:
         angle = 360 - angle
-        
     return angle
 
-# Bắt đầu Webcam
 cap = cv2.VideoCapture(0)
+
+# MỞ RỘNG CỬA SỔ CHO DỄ NHÌN
+cv2.namedWindow('Game Tetris - Sprint 4', cv2.WINDOW_NORMAL)
 
 with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
     while cap.isOpened():
@@ -37,48 +28,61 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         if not ret:
             break
         
-        # Chuyển màu và xử lý
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
         results = pose.process(image)
         image.flags.writeable = True
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # --- PHẦN MỚI 2: LẤY TOẠ ĐỘ VÀ TÍNH GÓC ---
         try:
             landmarks = results.pose_landmarks.landmark
             
-            # Lấy toạ độ 3 điểm của CÁNH TAY TRÁI
-            # MediaPipe đánh số: 11=Vai trái, 13=Khuỷu trái, 15=Cổ tay trái
-            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
-                        landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
-            elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x,
-                     landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
-            wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x,
-                     landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+            # Lấy toạ độ tay TRÁI
+            shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+            elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+            wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
             
-            # Gọi hàm tính góc ở trên
             angle = calculate_angle(shoulder, elbow, wrist)
             
-            # Hiện con số góc lên màn hình (ngay chỗ khuỷu tay)
-            # Chuyển toạ độ từ tỉ lệ (0-1) sang pixel màn hình để in chữ
-            h, w, _ = image.shape
-            cv2.putText(image, str(int(angle)), 
-                           tuple(np.multiply(elbow, [w, h]).astype(int)), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA
-                        )
-            
-            # In ra Terminal để bạn dễ theo dõi
-            # print(f"Goc tay trai: {angle}")
-            
-        except:
-            pass # Nếu không thấy người thì bỏ qua, không báo lỗi
+            # --- PHẦN MỚI: LOGIC TRỌNG TÀI ---
+            # Mục tiêu: Giữ tay vuông góc (khoảng 90 độ)
+            target_angle = 90
+            tolerance = 15 # Cho phép sai số +- 15 độ (tức là từ 75 đến 105 là OK)
 
-        # Vẽ xương
+            # Mặc định là màu đỏ (Sai)
+            status_text = "Sai Roi!"
+            color = (0, 0, 255) # Red (Lưu ý: OpenCV dùng thứ tự Blue-Green-Red)
+
+            # Kiểm tra xem có đạt yêu cầu không?
+            if (target_angle - tolerance) < angle < (target_angle + tolerance):
+                status_text = "TUYET VOI!"
+                color = (0, 255, 0) # Green
+
+            # Hiển thị lên màn hình
+            h, w, _ = image.shape
+            # Vị trí in chữ
+            text_pos = tuple(np.multiply(elbow, [w, h]).astype(int))
+            
+            # In số đo góc
+            cv2.putText(image, str(int(angle)), text_pos, 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2, cv2.LINE_AA)
+            
+            # In thông báo Đạt/Không Đạt
+            cv2.putText(image, status_text, (text_pos[0], text_pos[1] + 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2, cv2.LINE_AA)
+            
+            # Vẽ một cái hộp chỉ dẫn ở góc trái màn hình
+            cv2.rectangle(image, (0,0), (250, 73), (245,117,16), -1)
+            cv2.putText(image, 'NHIEM VU:', (15,12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
+            cv2.putText(image, 'Vuong Goc Tay Trai', (10,60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2, cv2.LINE_AA)
+
+        except:
+            pass
+
         if results.pose_landmarks:
             mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             
-        cv2.imshow('Game Tetris - Do Goc', image)
+        cv2.imshow('Game Tetris - Sprint 4', image)
 
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
