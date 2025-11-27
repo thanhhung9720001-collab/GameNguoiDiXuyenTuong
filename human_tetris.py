@@ -139,6 +139,10 @@ base_duration = 5.0
 current_duration = base_duration 
 start_time = time.time()
 
+score = 0
+high_score = get_high_score() # <--- THÊM DÒNG NÀY
+print(f"Ky luc hien tai: {high_score}")
+
 # Nhiệm vụ hiện tại: Có thể là Dict (Tay) hoặc String (Chân)
 current_task = None 
 task_type = None # "ARM" hoặc "LEG"
