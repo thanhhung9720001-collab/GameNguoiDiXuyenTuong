@@ -1,9 +1,9 @@
 """
-ASSIGNMENT 2 KIOSK EDITION: AI EXER-GAME (FINAL FIX)
-Tính năng:
-- Touchless UI: Dùng tay ảo để bấm nút Start/Restart.
-- Item Manager: Quản lý Tiền/Bom.
-- High Score & Sound FX.
+ASSIGNMENT 2 FINAL KIOSK: AI EXER-GAME
+Tính năng đầy đủ:
+- Touchless UI (Menu không chạm).
+- Matrix Mode (Né bom, ăn tiền).
+- Real-time High Score Display (Hiển thị kỷ lục lúc chơi).
 """
 import cv2
 import mediapipe as mp
@@ -27,7 +27,7 @@ def play_sound(type):
             winsound.Beep(500, 150); winsound.Beep(400, 150); winsound.Beep(300, 400)
     threading.Thread(target=run, daemon=True).start()
 
-# --- 2. CLASS NÚT BẤM ẢO (ĐÃ SỬA LỖI) ---
+# --- 2. CLASS NÚT BẤM ẢO ---
 class Button:
     def __init__(self, text, x, y, w, h, color=(0, 255, 0)):
         self.text = text
@@ -51,20 +51,15 @@ class Button:
         text_y = y + (h + text_size[1]) // 2
         cv2.putText(img, self.text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 2)
 
-    # ĐÃ SỬA: Thêm tham số 'img' vào hàm này
     def check_hover(self, img, landmarks, img_w, img_h):
-        pointers = [19, 20] # Ngón trỏ
+        pointers = [19, 20] 
         is_hovering = False
         x, y, w, h = self.rect
-        
         for idx in pointers:
             px = int(landmarks[idx].x * img_w)
             py = int(landmarks[idx].y * img_h)
-            
-            # Kiểm tra toạ độ
             if x < px < x + w and y < py < y + h:
                 is_hovering = True
-                # Vẽ vòng tròn ngón tay (Giờ đã có biến img để vẽ)
                 cv2.circle(img, (px, py), 15, (0, 255, 255), -1)
                 break
         
@@ -247,7 +242,6 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
             # Vẽ nút START
             btn_start.draw(image)
             if results.pose_landmarks:
-                # ĐÃ SỬA: Truyền biến 'image' vào hàm check_hover
                 if btn_start.check_hover(image, results.pose_landmarks.landmark, w, h):
                     reset_game()
 
@@ -289,7 +283,10 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
                     lives -= 1; shake_timer = 10; combo = 0
                     if lives == 0: 
                         game_state = "GAMEOVER"; play_sound("gameover")
-                        if score > high_score: high_score = score; save_high_score(high_score)
+                        if score > high_score: 
+                            high_score = score
+                            save_high_score(high_score)
+                            print(f"!!! DA LUU KY LUC MOI: {high_score} !!!")
 
                 time_left = current_duration - (time.time() - start_time)
                 if time_left <= 0:
@@ -305,13 +302,19 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
                         play_sound("fail"); add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
                         if lives == 0:
                             game_state = "GAMEOVER"; play_sound("gameover")
-                            if score > high_score: high_score = score; save_high_score(high_score)
+                            if score > high_score: 
+                                high_score = score
+                                save_high_score(high_score)
+                                print(f"!!! DA LUU KY LUC MOI: {high_score} !!!")
                     new_round()
 
                 cv2.rectangle(image, (0, 0), (w, 20), (50, 50, 50), -1)
                 cv2.rectangle(image, (0, 0), (int(max(0, time_left)/current_duration*w), 20), (0, 255, 0) if time_left>2 else (0,0,255), -1)
                 cv2.putText(image, f"SCORE: {score}", (20, 60), 1, 1.5, (255, 255, 255), 2)
-                if combo > 1: cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
+                # --- HIỂN THỊ TOP SCORE LÚC CHƠI (MỚI) ---
+                cv2.putText(image, f"TOP: {high_score}", (w - 200, 40), 1, 1, (0, 255, 255), 2)
+                
+                if combo > 1: cv2.putText(image, f"{combo} COMBO", (w-250, 80), 1, 1.5, (255, 0, 255), 3)
                 task_txt = current_task if task_type == "ARM" else "SQUAT DOWN!"
                 cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
                 cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
@@ -330,7 +333,6 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
             btn_restart.draw(image)
             if results.pose_landmarks:
                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-                # ĐÃ SỬA: Truyền biến 'image' vào hàm check_hover
                 if btn_restart.check_hover(image, results.pose_landmarks.landmark, w, h):
                     reset_game()
 
