@@ -284,6 +284,12 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                 
                 # ... (Đoạn vẽ điểm số ở dưới giữ nguyên) ...
 
+                # ... (Code cũ vẽ DIEM và MANG) ...
+                cv2.putText(image, f"DIEM: {score} | MANG: {lives}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,215,0), 2)
+                
+                # <--- THÊM ĐOẠN NÀY: Vẽ Kỷ lục ở góc phải trên cùng
+                cv2.putText(image, f"TOP: {high_score}", (w - 180, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+
             # --- GIAI ĐOẠN 3: GAME OVER ---
             elif lives == 0:
                 overlay = image.copy()
