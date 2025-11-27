@@ -1,9 +1,9 @@
 """
-ASSIGNMENT 2 MATRIX EDITION: AI EXER-GAME (FINAL FIX)
-Đã sửa lỗi:
-- Hiển thị đầy đủ màn hình GAME OVER.
-- Thêm hướng dẫn "Press R to Restart".
-- Cân bằng độ khó (Bom/Tiền).
+ASSIGNMENT 2 KIOSK EDITION: AI EXER-GAME (FIXED SYNTAX)
+Tính năng:
+- Touchless UI: Dùng tay ảo để bấm nút Start/Restart.
+- Item Manager: Quản lý Tiền/Bom.
+- High Score & Sound FX.
 """
 import cv2
 import mediapipe as mp
@@ -21,13 +21,62 @@ def play_sound(type):
         if type == "score": winsound.Beep(1000, 50)
         elif type == "coin": winsound.Beep(2000, 50)
         elif type == "bomb": winsound.Beep(150, 400)
-        elif type == "combo": winsound.Beep(1500, 80)
-        elif type == "fail": winsound.Beep(300, 300)
+        elif type == "click": winsound.Beep(800, 100)
+        elif type == "hover": winsound.Beep(600, 30)
         elif type == "gameover": 
             winsound.Beep(500, 150); winsound.Beep(400, 150); winsound.Beep(300, 400)
     threading.Thread(target=run, daemon=True).start()
 
-# --- 2. HIỆU ỨNG CHỮ BAY ---
+# --- 2. CLASS NÚT BẤM ẢO ---
+class Button:
+    def __init__(self, text, x, y, w, h, color=(0, 255, 0)):
+        self.text = text
+        self.rect = (x, y, w, h)
+        self.color = color
+        self.hover_timer = 0
+        self.required_time = 20
+        self.is_triggered = False
+
+    def draw(self, img):
+        x, y, w, h = self.rect
+        cv2.rectangle(img, (x, y), (x + w, y + h), self.color, 2)
+        if self.hover_timer > 0:
+            fill_width = int(w * (self.hover_timer / self.required_time))
+            overlay = img.copy()
+            cv2.rectangle(overlay, (x, y), (x + fill_width, y + h), self.color, -1)
+            cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
+        font_scale = 1.0
+        text_size = cv2.getTextSize(self.text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 2)[0]
+        text_x = x + (w - text_size[0]) // 2
+        text_y = y + (h + text_size[1]) // 2
+        cv2.putText(img, self.text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 2)
+
+    def check_hover(self, landmarks, img_w, img_h):
+        pointers = [19, 20] 
+        is_hovering = False
+        x, y, w, h = self.rect
+        for idx in pointers:
+            px = int(landmarks[idx].x * img_w)
+            py = int(landmarks[idx].y * img_h)
+            if x < px < x + w and y < py < y + h:
+                is_hovering = True
+                cv2.circle(img, (px, py), 15, (0, 255, 255), -1)
+                break
+        
+        if is_hovering:
+            self.hover_timer += 1
+            if self.hover_timer == 1: play_sound("hover")
+            if self.hover_timer >= self.required_time:
+                self.hover_timer = 0
+                self.is_triggered = True
+                play_sound("click")
+                return True
+        else:
+            self.hover_timer = max(0, self.hover_timer - 2)
+            self.is_triggered = False
+        return False
+
+# --- 3. QUẢN LÝ VẬT THỂ & EFFECT ---
 floating_texts = [] 
 def add_floating_text(text, x, y, color=(0, 255, 0)):
     floating_texts.append({'text': text, 'pos': [x, y], 'timer': 30, 'color': color})
@@ -38,66 +87,41 @@ def update_and_draw_effects(img):
         if ft['timer'] <= 0: floating_texts.remove(ft)
         else: cv2.putText(img, ft['text'], tuple(ft['pos']), 1, 1.5, ft['color'], 3)
 
-# --- 3. QUẢN LÝ VẬT THỂ RƠI ---
 class ItemManager:
     def __init__(self):
         self.items = []
         self.spawn_timer = 0
-    
     def update(self, img_w, img_h):
         self.spawn_timer += 1
         if self.spawn_timer > 60: 
             self.spawn_timer = 0
             item_type = 'coin' if random.random() < 0.6 else 'bomb'
             radius = 25 if item_type == 'coin' else 30
-            self.items.append({
-                'x': random.randint(50, img_w - 50),
-                'y': -50,
-                'type': item_type,
-                'radius': radius,
-                'speed': random.randint(4, 9)
-            })
+            self.items.append({'x': random.randint(50, img_w - 50),'y': -50,'type': item_type,'radius': radius,'speed': random.randint(4, 9)})
         for item in self.items[:]:
             item['y'] += item['speed']
             if item['y'] > img_h + 50: self.items.remove(item)
-
     def draw(self, img):
         for item in self.items:
             if item['type'] == 'coin':
-                cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 255, 255), -1)
-                cv2.circle(img, (item['x'], item['y']), item['radius'], (255, 255, 255), 2)
-                cv2.putText(img, "$", (item['x']-8, item['y']+8), 1, 1.2, (0,0,0), 2)
+                cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 255, 255), -1); cv2.circle(img, (item['x'], item['y']), item['radius'], (255, 255, 255), 2); cv2.putText(img, "$", (item['x']-8, item['y']+8), 1, 1.2, (0,0,0), 2)
             else:
-                cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 0, 255), -1)
-                cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 0, 0), 2)
-                cv2.putText(img, "X", (item['x']-10, item['y']+10), 1, 1.5, (255,255,255), 2)
-
+                cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 0, 255), -1); cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 0, 0), 2); cv2.putText(img, "X", (item['x']-10, item['y']+10), 1, 1.5, (255,255,255), 2)
     def check_collision(self, landmarks, img_w, img_h):
         hit_info = {'score': 0, 'hit_bomb': False}
-        hand_points = [15, 16, 19, 20] 
-        body_points = [0, 11, 12] 
-        
+        hand_points = [15, 16, 19, 20]; body_points = [0, 11, 12] 
         for item in self.items[:]:
             check_points = hand_points if item['type'] == 'coin' else body_points
             for idx in check_points:
-                px = int(landmarks[idx].x * img_w)
-                py = int(landmarks[idx].y * img_h)
-                dist = math.sqrt((px - item['x'])**2 + (py - item['y'])**2)
-                
-                if dist < item['radius'] + 10: 
+                px = int(landmarks[idx].x * img_w); py = int(landmarks[idx].y * img_h)
+                if math.sqrt((px - item['x'])**2 + (py - item['y'])**2) < item['radius'] + 10: 
                     self.items.remove(item)
-                    if item['type'] == 'coin':
-                        hit_info['score'] += 5
-                        play_sound("coin")
-                        add_floating_text("NICE!", item['x'], item['y'], (0, 255, 255))
-                    else: 
-                        hit_info['hit_bomb'] = True
-                        play_sound("bomb")
-                        add_floating_text("OUCH!", item['x'], item['y'], (0, 0, 255))
+                    if item['type'] == 'coin': hit_info['score'] += 5; play_sound("coin"); add_floating_text("NICE!", item['x'], item['y'], (0, 255, 255))
+                    else: hit_info['hit_bomb'] = True; play_sound("bomb"); add_floating_text("OUCH!", item['x'], item['y'], (0, 0, 255))
                     break 
         return hit_info
 
-# --- 4. HÀM VẼ ---
+# --- 4. HÀM VẼ (STICKMAN & SKELETON) ---
 def draw_stickman(img, pose_name, x, y, size=80):
     thickness = 3; color = (255, 255, 255)
     cv2.circle(img, (x, y - size//2), size//4, color, -1) 
@@ -114,21 +138,11 @@ def draw_stickman(img, pose_name, x, y, size=80):
     l_sh = (x - size//4, y); r_sh = (x + size//4, y)
     l_el, l_wr = (l_sh[0]-10, l_sh[1]+30), (l_sh[0]-10, l_sh[1]+50)
     r_el, r_wr = (r_sh[0]+10, r_sh[1]+30), (r_sh[0]+10, r_sh[1]+50)
-    if pose_name and "Luc Si" in pose_name:
-        l_el, l_wr = (l_sh[0]-20, l_sh[1]), (l_sh[0]-20, l_sh[1]-30)
-        r_el, r_wr = (r_sh[0]+20, r_sh[1]), (r_sh[0]+20, r_sh[1]-30)
-    elif pose_name and "Chim Bay" in pose_name:
-        l_el, l_wr = (l_sh[0]-20, l_sh[1]), (l_sh[0]-45, l_sh[1])
-        r_el, r_wr = (r_sh[0]+20, r_sh[1]), (r_sh[0]+45, r_sh[1])
-    elif pose_name and ("Cheo Canh" in pose_name or "CSGT" in pose_name):
-        l_el, l_wr = (l_sh[0]-20, l_sh[1]), (l_sh[0]-45, l_sh[1])
-        r_el, r_wr = (r_sh[0]+20, r_sh[1]), (r_sh[0]+20, r_sh[1]-30)
-    elif pose_name and "SQUAT" in pose_name:
-        l_el, l_wr = (l_sh[0], l_sh[1]+20), (l_sh[0]+10, l_sh[1]+10)
-        r_el, r_wr = (r_sh[0], r_sh[1]+20), (r_sh[0]-10, r_sh[1]+10)
-    cv2.line(img, (x, y), l_sh, color, thickness); cv2.line(img, (x, y), r_sh, color, thickness)
-    cv2.line(img, l_sh, l_el, color, thickness); cv2.line(img, l_el, l_wr, color, thickness)
-    cv2.line(img, r_sh, r_el, color, thickness); cv2.line(img, r_el, r_wr, color, thickness)
+    if pose_name and "Luc Si" in pose_name: l_el, l_wr = (l_sh[0]-20, l_sh[1]), (l_sh[0]-20, l_sh[1]-30); r_el, r_wr = (r_sh[0]+20, r_sh[1]), (r_sh[0]+20, r_sh[1]-30)
+    elif pose_name and "Chim Bay" in pose_name: l_el, l_wr = (l_sh[0]-20, l_sh[1]), (l_sh[0]-45, l_sh[1]); r_el, r_wr = (r_sh[0]+20, r_sh[1]), (r_sh[0]+45, r_sh[1])
+    elif pose_name and ("Cheo Canh" in pose_name or "CSGT" in pose_name): l_el, l_wr = (l_sh[0]-20, l_sh[1]), (l_sh[0]-45, l_sh[1]); r_el, r_wr = (r_sh[0]+20, r_sh[1]), (r_sh[0]+20, r_sh[1]-30)
+    elif pose_name and "SQUAT" in pose_name: l_el, l_wr = (l_sh[0], l_sh[1]+20), (l_sh[0]+10, l_sh[1]+10); r_el, r_wr = (r_sh[0], r_sh[1]+20), (r_sh[0]-10, r_sh[1]+10)
+    cv2.line(img, (x, y), l_sh, color, thickness); cv2.line(img, (x, y), r_sh, color, thickness); cv2.line(img, l_sh, l_el, color, thickness); cv2.line(img, l_el, l_wr, color, thickness); cv2.line(img, r_sh, r_el, color, thickness); cv2.line(img, r_el, r_wr, color, thickness)
 
 CONNECTIONS = [(11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24), (23, 25), (24, 26), (25, 27), (26, 28)]
 def draw_neon_skeleton(img, landmarks, combo):
@@ -150,11 +164,7 @@ def draw_neon_skeleton(img, landmarks, combo):
 
 # --- 5. CẤU HÌNH ---
 mp_pose = mp.solutions.pose
-arm_poses = {
-    "Luc Si (2 Tay Vuong)": {"left": 90, "right": 90, "tolerance": 25},
-    "Chim Bay (2 Tay Thang)": {"left": 170, "right": 170, "tolerance": 25},
-    "CSGT (1 Thang 1 Vuong)": {"left": 170, "right": 90, "tolerance": 25},
-}
+arm_poses = { "Luc Si (2 Tay Vuong)": {"left": 90, "right": 90, "tolerance": 25}, "Chim Bay (2 Tay Thang)": {"left": 170, "right": 170, "tolerance": 25}, "CSGT (1 Thang 1 Vuong)": {"left": 170, "right": 90, "tolerance": 25}}
 def calculate_angle(a, b, c):
     a, b, c = np.array(a), np.array(b), np.array(c)
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
@@ -162,21 +172,32 @@ def calculate_angle(a, b, c):
     if angle > 180.0: angle = 360 - angle
     return angle
 
+# --- HÀM SỬA LỖI XUỐNG DÒNG (FIXED) ---
 def get_high_score():
-    if not os.path.exists("highscore.txt"): return 0
+    if not os.path.exists("highscore.txt"):
+        return 0
     try:
-        with open("highscore.txt", "r") as f: return int(f.read())
-    except: return 0
+        with open("highscore.txt", "r") as f:
+            return int(f.read())
+    except:
+        return 0
+
 def save_high_score(n):
     try:
-        with open("highscore.txt", "w") as f: f.write(str(n))
-    except: pass
+        with open("highscore.txt", "w") as f:
+            f.write(str(n))
+    except:
+        pass
 
 score = 0; lives = 3; combo = 0; high_score = get_high_score()
 game_state = "MENU"; base_y = 0; shake_timer = 0 
 current_task = None; task_type = None; start_time = time.time(); current_duration = 5.0
 calibration_frames = 60
 item_manager = ItemManager()
+
+# KHỞI TẠO NÚT BẤM (BUTTONS)
+btn_start = Button("START GAME", 200, 300, 240, 60, (0, 255, 0))
+btn_restart = Button("RESTART", 220, 380, 200, 60, (0, 255, 255))
 
 def new_round():
     global current_task, task_type, start_time
@@ -192,7 +213,7 @@ def reset_game():
 
 # --- 6. MAIN LOOP ---
 cap = cv2.VideoCapture(0)
-cv2.namedWindow('AI ExerGame Balanced', cv2.WINDOW_NORMAL)
+cv2.namedWindow('AI ExerGame Kiosk', cv2.WINDOW_NORMAL)
 
 with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, model_complexity=1) as pose:
     while cap.isOpened():
@@ -205,7 +226,7 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
             M = np.float32([[1, 0, shake_x], [0, 1, shake_y]])
             frame = cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]))
             shake_timer -= 1
-
+        
         if game_state == "MENU": frame = cv2.convertScaleAbs(frame, alpha=0.6, beta=0)
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
@@ -214,14 +235,19 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         h, w, _ = image.shape
 
-        # MENU
+        # === MENU ===
         if game_state == "MENU":
             cv2.rectangle(image, (0, h//2-100), (w, h//2+100), (0,0,0), -1)
             cv2.putText(image, "AI EXER-GAME", (w//2-250, h//2-20), 1, 3, (0,255,255), 5)
-            if int(time.time()*2) % 2 == 0: cv2.putText(image, "PRESS SPACE TO START", (w//2-200, h//2+50), 1, 1, (255,255,255), 2)
             cv2.putText(image, f"TOP SCORE: {high_score}", (w//2-120, h//2+150), 1, 1, (255,215,0), 2)
+            
+            # Vẽ nút START
+            btn_start.draw(image)
+            if results.pose_landmarks:
+                if btn_start.check_hover(results.pose_landmarks.landmark, w, h):
+                    reset_game()
 
-        # CALIBRATION
+        # === CALIBRATION ===
         elif game_state == "CALIBRATION":
              if results.pose_landmarks:
                 current_hip_y = (results.pose_landmarks.landmark[23].y + results.pose_landmarks.landmark[24].y) / 2
@@ -231,7 +257,7 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
                 if calibration_frames <= 0:
                     base_y = current_hip_y; game_state = "PLAYING"; new_round(); play_sound("score")
 
-        # PLAYING
+        # === PLAYING ===
         elif game_state == "PLAYING":
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
@@ -286,27 +312,28 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
                 cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
                 cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
 
-        # GAMEOVER (ĐÃ SỬA: Hiển thị hướng dẫn Restart)
+        # === GAMEOVER ===
         elif game_state == "GAMEOVER":
             overlay = image.copy(); cv2.rectangle(overlay, (0, 0), (w, h), (0,0,0), -1)
             image = cv2.addWeighted(overlay, 0.8, image, 0.2, 0)
             
-            # Chữ GAME OVER Viền đỏ
-            cv2.putText(image, "GAME OVER", (w//2-180, h//2-20), 1, 3, (0,0,255), 8) # Viền
-            cv2.putText(image, "GAME OVER", (w//2-180, h//2-20), 1, 3, (255,255,255), 2) # Ruột
-            
+            cv2.putText(image, "GAME OVER", (w//2-180, h//2-20), 1, 3, (0,0,255), 8)
+            cv2.putText(image, "GAME OVER", (w//2-180, h//2-20), 1, 3, (255,255,255), 2)
             cv2.putText(image, f"SCORE: {score}", (w//2-100, h//2+50), 1, 2, (255,255,255), 2)
-            if score == high_score and score > 0: 
-                cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+100), 1, 1.5, (0,255,0), 3)
+            if score == high_score and score > 0: cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+100), 1, 1.5, (0,255,0), 3)
             
-            # HƯỚNG DẪN RESTART QUAN TRỌNG
-            if int(time.time()*2) % 2 == 0: # Nhấp nháy
-                cv2.putText(image, "PRESS 'R' TO RESTART", (w//2-180, h//2+160), 1, 1, (0,255,255), 2)
+            # Vẽ nút RESTART
+            btn_restart.draw(image)
+            if results.pose_landmarks:
+                mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+                if btn_restart.check_hover(results.pose_landmarks.landmark, w, h):
+                    reset_game()
 
         update_and_draw_effects(image)
-        cv2.imshow('AI ExerGame Balanced', image)
+        cv2.imshow('AI ExerGame Kiosk', image)
         key = cv2.waitKey(10) & 0xFF
         if key == ord('q'): break
+        # Vẫn giữ phím Space/R làm dự phòng (Backup)
         if key == ord(' ') and game_state == "MENU": reset_game()
         if key == ord('r') and game_state == "GAMEOVER": reset_game()
 
