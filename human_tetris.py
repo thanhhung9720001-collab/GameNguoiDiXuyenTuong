@@ -1,10 +1,11 @@
 """
-ASSIGNMENT 2 ULTIMATE: AI EXER-GAME - NEON EDITION
-Tính năng mới:
+ASSIGNMENT 2 ULTIMATE: AI EXER-GAME - NEON EDITION (FIXED)
+Tính năng:
 - Custom Neon Skeleton (Bộ xương phát sáng)
 - Combo System & Fever Mode
 - Floating Text (Hiệu ứng chữ bay)
 - Screen Shake (Rung màn hình)
+- Stickman UI (Đã sửa lỗi)
 """
 import cv2
 import mediapipe as mp
@@ -19,67 +20,105 @@ import threading
 def play_sound(type):
     def run():
         if type == "score": winsound.Beep(1000, 80)
-        elif type == "combo": winsound.Beep(1500, 100) # Tiếng cao hơn
+        elif type == "combo": winsound.Beep(1500, 100)
         elif type == "fail": winsound.Beep(300, 300)
         elif type == "gameover": 
             winsound.Beep(500, 150); winsound.Beep(400, 150); winsound.Beep(300, 400)
     threading.Thread(target=run, daemon=True).start()
 
 # --- 2. QUẢN LÝ VISUAL EFFECT (CHỮ BAY) ---
-floating_texts = [] # Danh sách các chữ đang bay: {'text': '+1', 'pos': (x,y), 'timer': 20, 'color': (0,255,0)}
+floating_texts = [] 
 
 def add_floating_text(text, x, y, color=(0, 255, 0)):
     floating_texts.append({'text': text, 'pos': [x, y], 'timer': 30, 'color': color})
 
 def update_and_draw_effects(img):
-    # Xử lý chữ bay
     for ft in floating_texts[:]:
-        ft['pos'][1] -= 3 # Bay lên trên
+        ft['pos'][1] -= 3 
         ft['timer'] -= 1
-        # Hiệu ứng mờ dần (Alpha) giả lập bằng cách vẽ nét mỏng đi hoặc đổi màu tối đi
         if ft['timer'] <= 0:
             floating_texts.remove(ft)
         else:
             cv2.putText(img, ft['text'], tuple(ft['pos']), cv2.FONT_HERSHEY_SIMPLEX, 1.5, ft['color'], 3)
 
-# --- 3. HÀM VẼ XƯƠNG NEON (CUSTOM SKELETON) ---
-# Định nghĩa các cặp khớp xương để nối dây
+# --- 3. HÀM VẼ NGƯỜI QUE (STICKMAN) - ĐÃ THÊM LẠI ---
+def draw_stickman(img, pose_name, x, y, size=80):
+    thickness = 3
+    color = (255, 255, 255)
+    
+    # Đầu & Thân
+    cv2.circle(img, (x, y - size//2), size//4, color, -1) 
+    body_bottom = y + size//2
+    cv2.line(img, (x, y), (x, body_bottom), color, thickness)
+    
+    # Chân
+    if pose_name and "SQUAT" in str(pose_name):
+        cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size//3), color, thickness)
+        cv2.line(img, (x - size//3, body_bottom + size//3), (x - size//4, body_bottom + size//2 + 10), color, thickness)
+        cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size//3), color, thickness)
+        cv2.line(img, (x + size//3, body_bottom + size//3), (x + size//4, body_bottom + size//2 + 10), color, thickness)
+    else:
+        cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size), color, thickness)
+        cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size), color, thickness)
+
+    # Tay
+    l_shoulder = (x - size//4, y)
+    r_shoulder = (x + size//4, y)
+    
+    l_elbow, l_wrist = (l_shoulder[0]-10, l_shoulder[1]+30), (l_shoulder[0]-10, l_shoulder[1]+50)
+    r_elbow, r_wrist = (r_shoulder[0]+10, r_shoulder[1]+30), (r_shoulder[0]+10, r_shoulder[1]+50)
+
+    if pose_name and "Luc Si" in pose_name:
+        l_elbow, l_wrist = (l_shoulder[0]-20, l_shoulder[1]), (l_shoulder[0]-20, l_shoulder[1]-30)
+        r_elbow, r_wrist = (r_shoulder[0]+20, r_shoulder[1]), (r_shoulder[0]+20, r_shoulder[1]-30)
+    elif pose_name and "Chim Bay" in pose_name:
+        l_elbow, l_wrist = (l_shoulder[0]-20, l_shoulder[1]), (l_shoulder[0]-45, l_shoulder[1])
+        r_elbow, r_wrist = (r_shoulder[0]+20, r_shoulder[1]), (r_shoulder[0]+45, r_shoulder[1])
+    elif pose_name and ("Cheo Canh" in pose_name or "CSGT" in pose_name):
+        l_elbow, l_wrist = (l_shoulder[0]-20, l_shoulder[1]), (l_shoulder[0]-45, l_shoulder[1])
+        r_elbow, r_wrist = (r_shoulder[0]+20, r_shoulder[1]), (r_shoulder[0]+20, r_shoulder[1]-30)
+    elif pose_name and "SQUAT" in pose_name:
+        l_elbow, l_wrist = (l_shoulder[0], l_shoulder[1]+20), (l_shoulder[0]+10, l_shoulder[1]+10)
+        r_elbow, r_wrist = (r_shoulder[0], r_shoulder[1]+20), (r_shoulder[0]-10, r_shoulder[1]+10)
+
+    # Vẽ tay
+    cv2.line(img, (x, y), l_shoulder, color, thickness)
+    cv2.line(img, (x, y), r_shoulder, color, thickness)
+    cv2.line(img, l_shoulder, l_elbow, color, thickness)
+    cv2.line(img, l_elbow, l_wrist, color, thickness)
+    cv2.line(img, r_shoulder, r_elbow, color, thickness)
+    cv2.line(img, r_elbow, r_wrist, color, thickness)
+
+# --- 4. HÀM VẼ XƯƠNG NEON ---
 CONNECTIONS = [
-    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), # Tay & Vai
-    (11, 23), (12, 24), (23, 24), # Thân
-    (23, 25), (24, 26), (25, 27), (26, 28) # Chân
+    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), 
+    (11, 23), (12, 24), (23, 24), 
+    (23, 25), (24, 26), (25, 27), (26, 28) 
 ]
 
 def draw_neon_skeleton(img, landmarks, combo):
     h, w, _ = img.shape
     
-    # 1. Xác định màu dựa trên Combo (Càng cao càng rực rỡ)
-    if combo < 3: color = (0, 255, 0) # Xanh lá (Bình thường)
-    elif combo < 6: color = (0, 255, 255) # Vàng (Khá)
-    elif combo < 10: color = (0, 165, 255) # Cam (Giỏi)
-    else: color = (255, 0, 255) # Tím Neon (Thần thánh) - Fever Mode
+    if combo < 3: color = (0, 255, 0) 
+    elif combo < 6: color = (0, 255, 255) 
+    elif combo < 10: color = (0, 165, 255) 
+    else: color = (255, 0, 255) 
     
-    thickness = 2 + (combo // 3) # Combo càng cao dây càng dày
+    thickness = 2 + (combo // 3) 
     
-    # 2. Vẽ dây nối (Bones)
     for start_idx, end_idx in CONNECTIONS:
         start = (int(landmarks[start_idx].x * w), int(landmarks[start_idx].y * h))
         end = (int(landmarks[end_idx].x * w), int(landmarks[end_idx].y * h))
-        
-        # Vẽ viền đen cho nổi
         cv2.line(img, start, end, (0, 0, 0), thickness + 4)
-        # Vẽ dây màu neon
         cv2.line(img, start, end, color, thickness)
         
-    # 3. Vẽ khớp tròn (Joints)
-    # Chỉ vẽ các khớp quan trọng: Vai, Khuỷu, Cổ tay, Hông, Gối
     key_joints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26]
     for idx in key_joints:
         cx, cy = int(landmarks[idx].x * w), int(landmarks[idx].y * h)
-        cv2.circle(img, (cx, cy), 8, (255, 255, 255), -1) # Nhân trắng
-        cv2.circle(img, (cx, cy), 8, color, 2) # Viền màu
+        cv2.circle(img, (cx, cy), 8, (255, 255, 255), -1)
+        cv2.circle(img, (cx, cy), 8, color, 2)
 
-# --- 4. CẤU HÌNH CŨ ---
+# --- 5. CẤU HÌNH & GAME STATE ---
 mp_pose = mp.solutions.pose
 arm_poses = {
     "Luc Si (2 Tay Vuong)": {"left": 90, "right": 90, "tolerance": 25},
@@ -104,14 +143,13 @@ def save_high_score(n):
         with open("highscore.txt", "w") as f: f.write(str(n))
     except: pass
 
-# --- 5. BIẾN GAME & STATE ---
 score = 0
 lives = 3
-combo = 0 # <--- BIẾN MỚI
+combo = 0 
 high_score = get_high_score()
 game_state = "MENU"
 base_y = 0
-shake_timer = 0 # <--- Biến rung màn hình
+shake_timer = 0 
 
 current_task = None
 task_type = None
@@ -148,8 +186,6 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         
         frame = cv2.flip(frame, 1)
         
-        # --- HIỆU ỨNG RUNG MÀN HÌNH (SCREEN SHAKE) ---
-        # Logic: Dịch chuyển ảnh ngẫu nhiên vài pixel
         if shake_timer > 0:
             shake_x = random.randint(-10, 10)
             shake_y = random.randint(-10, 10)
@@ -166,16 +202,15 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         h, w, _ = image.shape
 
-        # === 1. MENU ===
+        # === MENU ===
         if game_state == "MENU":
             cv2.rectangle(image, (0, h//2-100), (w, h//2+100), (0,0,0), -1)
             cv2.putText(image, "NEON EXER-GAME", (w//2-230, h//2-20), 1, 3, (0,255,255), 5)
-            # Hiệu ứng chữ nhấp nháy
             if int(time.time()*2) % 2 == 0:
                 cv2.putText(image, "PRESS SPACE TO START", (w//2-200, h//2+50), 1, 1, (255,255,255), 2)
             cv2.putText(image, f"TOP SCORE: {high_score}", (w//2-120, h//2+150), 1, 1, (255,215,0), 2)
 
-        # === 2. CALIBRATION ===
+        # === CALIBRATION ===
         elif game_state == "CALIBRATION":
              if results.pose_landmarks:
                 current_hip_y = (results.pose_landmarks.landmark[23].y + results.pose_landmarks.landmark[24].y) / 2
@@ -188,13 +223,11 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                     new_round()
                     play_sound("score")
 
-        # === 3. PLAYING ===
+        # === PLAYING ===
         elif game_state == "PLAYING":
             if results.pose_landmarks:
-                # Vẽ bộ xương Neon
                 draw_neon_skeleton(image, results.pose_landmarks.landmark, combo)
                 
-                # Logic Game
                 landmarks = results.pose_landmarks.landmark
                 l_hip, r_hip = landmarks[23].y, landmarks[24].y
                 
@@ -210,7 +243,6 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                     if ((l_hip + r_hip)/2) > (base_y + 0.15): success = True
                     else: cv2.line(image, (0, int((base_y+0.15)*h)), (w, int((base_y+0.15)*h)), (0,255,255), 2)
 
-                # Xử lý thời gian
                 time_left = current_duration - (time.time() - start_time)
                 if time_left <= 0:
                     if success:
@@ -249,81 +281,12 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                 cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
                 
                 cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
-
-                # --- KHÔI PHỤC STICKMAN Ở ĐÂY ---
+                
+                # VẼ STICKMAN (Đã có hàm để gọi)
                 draw_stickman(image, current_task, 80, 180, 60)
                 cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
-            # Vẽ bộ xương Neon thay vì xương mặc định
-            if results.pose_landmarks:
-                draw_neon_skeleton(image, results.pose_landmarks.landmark, combo)
-                
-                # Logic Game (Giữ nguyên logic cũ nhưng gọn hơn)
-                landmarks = results.pose_landmarks.landmark
-                l_hip, r_hip = landmarks[23].y, landmarks[24].y
-                
-                success = False
-                if task_type == "ARM":
-                    l_ang = calculate_angle([landmarks[11].x, landmarks[11].y], [landmarks[13].x, landmarks[13].y], [landmarks[15].x, landmarks[15].y])
-                    r_ang = calculate_angle([landmarks[12].x, landmarks[12].y], [landmarks[14].x, landmarks[14].y], [landmarks[16].x, landmarks[16].y])
-                    t_l, t_r, tol = arm_poses[current_task]["left"], arm_poses[current_task]["right"], arm_poses[current_task]["tolerance"]
-                    if (((t_l-tol)<l_ang<(t_l+tol)) and ((t_r-tol)<r_ang<(t_r+tol))) or \
-                       (((t_r-tol)<l_ang<(t_r+tol)) and ((t_l-tol)<r_ang<(t_l+tol))):
-                        success = True
-                elif task_type == "LEG":
-                    if ((l_hip + r_hip)/2) > (base_y + 0.15): success = True
-                    else: cv2.line(image, (0, int((base_y+0.15)*h)), (w, int((base_y+0.15)*h)), (0,255,255), 2)
 
-                # Xử lý thời gian
-                time_left = current_duration - (time.time() - start_time)
-                if time_left <= 0:
-                    if success:
-                        score += 1
-                        combo += 1 # Tăng combo
-                        
-                        # Hiệu ứng khi ghi điểm
-                        shake_timer = 3 # Rung màn hình 3 frames
-                        play_sound("combo" if combo > 2 else "score")
-                        
-                        # Thêm chữ bay (Floating Text)
-                        txt = f"+1" if combo < 3 else f"COMBO x{combo}"
-                        color_txt = (0, 255, 0) if combo < 5 else (255, 0, 255)
-                        add_floating_text(txt, w//2 - 50, h//2, color_txt)
-                        
-                        if score % 3 == 0 and current_duration > 2.0: current_duration -= 0.5
-                    else:
-                        lives -= 1
-                        combo = 0 # Mất combo
-                        shake_timer = 5 # Rung mạnh hơn khi sai
-                        play_sound("fail")
-                        add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
-                        if lives == 0:
-                            game_state = "GAMEOVER"
-                            play_sound("gameover")
-                            if score > high_score: 
-                                high_score = score
-                                save_high_score(high_score)
-                    new_round()
-
-                # UI Overlay
-                # Thanh thời gian trên đầu (nhìn cho giống game đối kháng)
-                cv2.rectangle(image, (0, 0), (w, 20), (50, 50, 50), -1)
-                cv2.rectangle(image, (0, 0), (int(time_left/current_duration*w), 20), (0, 255, 0) if time_left>2 else (0,0,255), -1)
-                
-                # Bảng điểm góc trái
-                cv2.putText(image, f"SCORE: {score}", (20, 60), 1, 1.5, (255, 255, 255), 2)
-                # Bảng Combo góc phải (nếu có combo)
-                if combo > 1:
-                    cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
-                    cv2.putText(image, "FIRE!", (w-180, 100), 1, 1, (0, 165, 255), 2)
-
-                # Nhiệm vụ ở giữa
-                task_txt = current_task if task_type == "ARM" else "SQUAT DOWN!"
-                cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
-                
-                # Mạng sống
-                cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
-
-        # === 4. GAMEOVER ===
+        # === GAMEOVER ===
         elif game_state == "GAMEOVER":
             overlay = image.copy()
             cv2.rectangle(overlay, (0, 0), (w, h), (0,0,0), -1)
@@ -333,7 +296,6 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
             if score == high_score and score > 0:
                 cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+120), 1, 1.5, (0,255,0), 3)
 
-        # Cập nhật và vẽ các hiệu ứng chữ bay
         update_and_draw_effects(image)
         
         cv2.imshow('Neon Arcade ExerGame', image)
