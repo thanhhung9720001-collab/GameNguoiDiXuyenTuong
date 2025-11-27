@@ -1,9 +1,9 @@
 """
-ASSIGNMENT 2 MATRIX EDITION: AI EXER-GAME (FIXED)
-Tính năng mới (Sprint 13):
-- Falling Bombs: Vật cản rơi từ trên xuống, chạm vào là mất mạng.
-- Item Manager: Quản lý cả Tiền và Bom.
-- Explosion Effect: Hiệu ứng khi chạm bom.
+ASSIGNMENT 2 FINAL BALANCED: AI EXER-GAME
+Cập nhật cân bằng game:
+1. AI nhạy hơn (bắt được khi đứng xa hơn).
+2. Tiền chỉ ăn được bằng TAY (Không ăn bằng đầu/vai).
+3. Bom nhỏ lại và rơi chậm hơn (Dễ né khi đứng gần).
 """
 import cv2
 import mediapipe as mp
@@ -20,14 +20,14 @@ def play_sound(type):
     def run():
         if type == "score": winsound.Beep(1000, 50)
         elif type == "coin": winsound.Beep(2000, 50)
-        elif type == "bomb": winsound.Beep(150, 400) # Tiếng nổ trầm
+        elif type == "bomb": winsound.Beep(150, 400)
         elif type == "combo": winsound.Beep(1500, 80)
         elif type == "fail": winsound.Beep(300, 300)
         elif type == "gameover": 
             winsound.Beep(500, 150); winsound.Beep(400, 150); winsound.Beep(300, 400)
     threading.Thread(target=run, daemon=True).start()
 
-# --- 2. HIỆU ỨNG CHỮ BAY ---
+# --- 2. HIỆU ỨNG ---
 floating_texts = [] 
 def add_floating_text(text, x, y, color=(0, 255, 0)):
     floating_texts.append({'text': text, 'pos': [x, y], 'timer': 30, 'color': color})
@@ -38,28 +38,30 @@ def update_and_draw_effects(img):
         if ft['timer'] <= 0: floating_texts.remove(ft)
         else: cv2.putText(img, ft['text'], tuple(ft['pos']), 1, 1.5, ft['color'], 3)
 
-# --- 3. QUẢN LÝ VẬT THỂ RƠI (BOM & TIỀN) ---
+# --- 3. QUẢN LÝ VẬT THỂ (ĐÃ CÂN BẰNG LẠI) ---
 class ItemManager:
     def __init__(self):
-        self.items = [] # {'x', 'y', 'type', 'speed', 'radius'}
+        self.items = []
         self.spawn_timer = 0
     
     def update(self, img_w, img_h):
-        # Sinh vật thể (Tăng tốc độ sinh theo thời gian game nếu muốn khó hơn)
+        # Tốc độ ra vật thể chậm lại chút để đỡ loạn
         self.spawn_timer += 1
-        if self.spawn_timer > 50: # Cứ 50 khung hình ra 1 vật
+        if self.spawn_timer > 60: # 60 khung hình mới ra 1 vật
             self.spawn_timer = 0
-            # 60% ra Tiền, 40% ra Bom
             item_type = 'coin' if random.random() < 0.6 else 'bomb'
+            
+            # Cân bằng kích thước (Nhỏ lại để dễ né)
+            radius = 25 if item_type == 'coin' else 30 
+            
             self.items.append({
                 'x': random.randint(50, img_w - 50),
                 'y': -50,
                 'type': item_type,
-                'radius': 30 if item_type == 'coin' else 40, # Bom to hơn chút
-                'speed': random.randint(5, 12)
+                'radius': radius,
+                'speed': random.randint(4, 9) # Rơi chậm hơn chút (Cũ là 5-12)
             })
 
-        # Cập nhật vị trí
         for item in self.items[:]:
             item['y'] += item['speed']
             if item['y'] > img_h + 50: self.items.remove(item)
@@ -67,47 +69,56 @@ class ItemManager:
     def draw(self, img):
         for item in self.items:
             if item['type'] == 'coin':
-                # Vẽ tiền Vàng
                 cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 255, 255), -1)
                 cv2.circle(img, (item['x'], item['y']), item['radius'], (255, 255, 255), 2)
-                cv2.putText(img, "$", (item['x']-10, item['y']+10), 1, 1.5, (0,0,0), 2)
+                cv2.putText(img, "$", (item['x']-8, item['y']+8), 1, 1.2, (0,0,0), 2)
             else:
-                # Vẽ Bom Đỏ (Có chữ X)
                 cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 0, 255), -1)
                 cv2.circle(img, (item['x'], item['y']), item['radius'], (0, 0, 0), 2)
-                cv2.putText(img, "X", (item['x']-15, item['y']+15), 1, 2, (255,255,255), 3)
+                cv2.putText(img, "X", (item['x']-10, item['y']+10), 1, 1.5, (255,255,255), 2)
 
     def check_collision(self, landmarks, img_w, img_h):
-        # Kiểm tra va chạm với các điểm nhạy cảm: Cổ tay, Đầu, Vai
         hit_info = {'score': 0, 'hit_bomb': False}
-        check_points = [0, 11, 12, 15, 16, 19, 20] # 0: Mũi, 11-12: Vai, 15-16: Tay
+        
+        # --- LUẬT CHƠI MỚI (QUAN TRỌNG) ---
+        # 15,16: Cổ tay | 19,20: Ngón trỏ
+        hand_points = [15, 16, 19, 20] 
+        # 0: Mũi | 11,12: Vai
+        body_points = [0, 11, 12] 
         
         for item in self.items[:]:
+            # Nếu là TIỀN: Chỉ kiểm tra va chạm với TAY
+            if item['type'] == 'coin':
+                check_points = hand_points
+            # Nếu là BOM: Kiểm tra va chạm với ĐẦU + VAI (Để bắt buộc phải né)
+            else:
+                check_points = body_points
+
             for idx in check_points:
                 px = int(landmarks[idx].x * img_w)
                 py = int(landmarks[idx].y * img_h)
+                # Giảm vùng va chạm (-5) để đỡ bị oan
                 dist = math.sqrt((px - item['x'])**2 + (py - item['y'])**2)
                 
-                if dist < item['radius'] + 20: # Va chạm
+                if dist < item['radius'] + 10: 
                     self.items.remove(item)
                     if item['type'] == 'coin':
                         hit_info['score'] += 5
                         play_sound("coin")
-                        add_floating_text("+5", item['x'], item['y'], (0, 255, 255))
-                    else: # Trúng bom
+                        add_floating_text("NICE!", item['x'], item['y'], (0, 255, 255))
+                    else: 
                         hit_info['hit_bomb'] = True
                         play_sound("bomb")
-                        add_floating_text("BOOM!", item['x'], item['y'], (0, 0, 255))
+                        add_floating_text("OUCH!", item['x'], item['y'], (0, 0, 255))
                     break 
         return hit_info
 
-# --- 4. HÀM VẼ (STICKMAN & NEON SKELETON) ---
+# --- 4. HÀM VẼ ---
 def draw_stickman(img, pose_name, x, y, size=80):
     thickness = 3; color = (255, 255, 255)
     cv2.circle(img, (x, y - size//2), size//4, color, -1) 
     body_bottom = y + size//2
     cv2.line(img, (x, y), (x, body_bottom), color, thickness)
-    # Chân
     if pose_name and "SQUAT" in str(pose_name):
         cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size//3), color, thickness)
         cv2.line(img, (x - size//3, body_bottom + size//3), (x - size//4, body_bottom + size//2 + 10), color, thickness)
@@ -116,7 +127,6 @@ def draw_stickman(img, pose_name, x, y, size=80):
     else:
         cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size), color, thickness)
         cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size), color, thickness)
-    # Tay
     l_sh = (x - size//4, y); r_sh = (x + size//4, y)
     l_el, l_wr = (l_sh[0]-10, l_sh[1]+30), (l_sh[0]-10, l_sh[1]+50)
     r_el, r_wr = (r_sh[0]+10, r_sh[1]+30), (r_sh[0]+10, r_sh[1]+50)
@@ -154,7 +164,7 @@ def draw_neon_skeleton(img, landmarks, combo):
         cx, cy = int(landmarks[idx].x * w), int(landmarks[idx].y * h)
         cv2.circle(img, (cx, cy), 8, (255, 255, 255), -1); cv2.circle(img, (cx, cy), 8, color, 2)
 
-# --- 5. CẤU HÌNH & LOGIC GAME ---
+# --- 5. CẤU HÌNH ---
 mp_pose = mp.solutions.pose
 arm_poses = {
     "Luc Si (2 Tay Vuong)": {"left": 90, "right": 90, "tolerance": 25},
@@ -169,26 +179,20 @@ def calculate_angle(a, b, c):
     return angle
 
 def get_high_score():
-    if not os.path.exists("highscore.txt"): 
-        return 0
+    if not os.path.exists("highscore.txt"): return 0
     try:
-        with open("highscore.txt", "r") as f:
-            return int(f.read())
-    except:
-        return 0
-
+        with open("highscore.txt", "r") as f: return int(f.read())
+    except: return 0
 def save_high_score(n):
     try:
-        with open("highscore.txt", "w") as f:
-            f.write(str(n))
-    except:
-        pass
+        with open("highscore.txt", "w") as f: f.write(str(n))
+    except: pass
 
 score = 0; lives = 3; combo = 0; high_score = get_high_score()
 game_state = "MENU"; base_y = 0; shake_timer = 0 
 current_task = None; task_type = None; start_time = time.time(); current_duration = 5.0
 calibration_frames = 60
-item_manager = ItemManager() # KHỞI TẠO QUẢN LÝ ITEM
+item_manager = ItemManager()
 
 def new_round():
     global current_task, task_type, start_time
@@ -200,19 +204,20 @@ def reset_game():
     global score, lives, combo, current_duration, game_state, calibration_frames, item_manager
     score = 0; lives = 3; combo = 0; current_duration = 5.0
     calibration_frames = 60; game_state = "CALIBRATION"
-    item_manager = ItemManager() # Reset items
+    item_manager = ItemManager()
 
 # --- 6. MAIN LOOP ---
 cap = cv2.VideoCapture(0)
-cv2.namedWindow('AI ExerGame Matrix', cv2.WINDOW_NORMAL)
+cv2.namedWindow('AI ExerGame Balanced', cv2.WINDOW_NORMAL)
 
-with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+# Tinh chỉnh AI: model_complexity=1 (Mặc định) giúp cân bằng tốc độ và độ chính xác
+# min_detection_confidence=0.6: Giúp AI chắc chắn hơn mới nhận diện (đỡ nhận nhầm khi đứng xa)
+with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, model_complexity=1) as pose:
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
         frame = cv2.flip(frame, 1)
         
-        # Shake Effect
         if shake_timer > 0:
             shake_x = random.randint(-15, 15); shake_y = random.randint(-15, 15)
             M = np.float32([[1, 0, shake_x], [0, 1, shake_y]])
@@ -227,14 +232,12 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         h, w, _ = image.shape
 
-        # === MENU ===
         if game_state == "MENU":
             cv2.rectangle(image, (0, h//2-100), (w, h//2+100), (0,0,0), -1)
-            cv2.putText(image, "AI EXER-GAME MATRIX", (w//2-280, h//2-20), 1, 2.5, (0,255,255), 4)
+            cv2.putText(image, "AI EXER-GAME", (w//2-250, h//2-20), 1, 3, (0,255,255), 5)
             if int(time.time()*2) % 2 == 0: cv2.putText(image, "PRESS SPACE TO START", (w//2-200, h//2+50), 1, 1, (255,255,255), 2)
             cv2.putText(image, f"TOP SCORE: {high_score}", (w//2-120, h//2+150), 1, 1, (255,215,0), 2)
 
-        # === CALIBRATION ===
         elif game_state == "CALIBRATION":
              if results.pose_landmarks:
                 current_hip_y = (results.pose_landmarks.landmark[23].y + results.pose_landmarks.landmark[24].y) / 2
@@ -244,17 +247,13 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                 if calibration_frames <= 0:
                     base_y = current_hip_y; game_state = "PLAYING"; new_round(); play_sound("score")
 
-        # === PLAYING ===
         elif game_state == "PLAYING":
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
-                
-                # 1. Vẽ Visuals
                 draw_neon_skeleton(image, landmarks, combo)
                 draw_stickman(image, current_task, 80, 180, 60)
                 cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
                 
-                # 2. Xử lý Logic Pose (Tay/Chân)
                 l_hip, r_hip = landmarks[23].y, landmarks[24].y
                 success = False
                 if task_type == "ARM":
@@ -266,52 +265,42 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                     if ((l_hip + r_hip)/2) > (base_y + 0.15): success = True
                     else: cv2.line(image, (0, int((base_y+0.15)*h)), (w, int((base_y+0.15)*h)), (0,255,255), 2)
 
-                # 3. Xử lý Vật thể rơi (Bom & Tiền) - NEW
                 item_manager.update(w, h)
                 item_manager.draw(image)
                 hit_result = item_manager.check_collision(landmarks, w, h)
                 
-                # Cộng điểm nếu ăn tiền
                 if hit_result['score'] > 0: score += hit_result['score']
-                
-                # Trừ mạng nếu trúng bom
                 if hit_result['hit_bomb']:
-                    lives -= 1
-                    shake_timer = 10 # Rung màn hình mạnh
-                    combo = 0
+                    lives -= 1; shake_timer = 10; combo = 0
                     if lives == 0: 
                         game_state = "GAMEOVER"; play_sound("gameover")
                         if score > high_score: high_score = score; save_high_score(high_score)
 
-                # 4. Xử lý thời gian Pose
-                if game_state == "PLAYING": # Check lại vì có thể chết do bom
-                    time_left = current_duration - (time.time() - start_time)
-                    if time_left <= 0:
-                        if success:
-                            score += 1; combo += 1; shake_timer = 2
-                            play_sound("combo" if combo > 2 else "score")
-                            txt = f"+1" if combo < 3 else f"COMBO x{combo}"
-                            color = (0, 255, 0) if combo < 5 else (255, 0, 255)
-                            add_floating_text(txt, w//2 - 50, h//2, color)
-                            if score % 3 == 0 and current_duration > 2.0: current_duration -= 0.5
-                        else:
-                            lives -= 1; combo = 0; shake_timer = 5
-                            play_sound("fail"); add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
-                            if lives == 0:
-                                game_state = "GAMEOVER"; play_sound("gameover")
-                                if score > high_score: high_score = score; save_high_score(high_score)
-                        new_round()
+                time_left = current_duration - (time.time() - start_time)
+                if time_left <= 0:
+                    if success:
+                        score += 1; combo += 1; shake_timer = 2
+                        play_sound("combo" if combo > 2 else "score")
+                        txt = f"+1" if combo < 3 else f"COMBO x{combo}"
+                        color = (0, 255, 0) if combo < 5 else (255, 0, 255)
+                        add_floating_text(txt, w//2 - 50, h//2, color)
+                        if score % 3 == 0 and current_duration > 2.0: current_duration -= 0.5
+                    else:
+                        lives -= 1; combo = 0; shake_timer = 5
+                        play_sound("fail"); add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
+                        if lives == 0:
+                            game_state = "GAMEOVER"; play_sound("gameover")
+                            if score > high_score: high_score = score; save_high_score(high_score)
+                    new_round()
 
-                    # UI Overlay
-                    cv2.rectangle(image, (0, 0), (w, 20), (50, 50, 50), -1)
-                    cv2.rectangle(image, (0, 0), (int(max(0, time_left)/current_duration*w), 20), (0, 255, 0) if time_left>2 else (0,0,255), -1)
-                    cv2.putText(image, f"SCORE: {score}", (20, 60), 1, 1.5, (255, 255, 255), 2)
-                    if combo > 1: cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
-                    task_txt = current_task if task_type == "ARM" else "SQUAT DOWN!"
-                    cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
-                    cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
+                cv2.rectangle(image, (0, 0), (w, 20), (50, 50, 50), -1)
+                cv2.rectangle(image, (0, 0), (int(max(0, time_left)/current_duration*w), 20), (0, 255, 0) if time_left>2 else (0,0,255), -1)
+                cv2.putText(image, f"SCORE: {score}", (20, 60), 1, 1.5, (255, 255, 255), 2)
+                if combo > 1: cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
+                task_txt = current_task if task_type == "ARM" else "SQUAT DOWN!"
+                cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
+                cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
 
-        # === GAMEOVER ===
         elif game_state == "GAMEOVER":
             overlay = image.copy(); cv2.rectangle(overlay, (0, 0), (w, h), (0,0,0), -1)
             image = cv2.addWeighted(overlay, 0.8, image, 0.2, 0)
@@ -320,7 +309,7 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
             if score == high_score and score > 0: cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+120), 1, 1.5, (0,255,0), 3)
 
         update_and_draw_effects(image)
-        cv2.imshow('AI ExerGame Matrix', image)
+        cv2.imshow('AI ExerGame Balanced', image)
         key = cv2.waitKey(10) & 0xFF
         if key == ord('q'): break
         if key == ord(' ') and game_state == "MENU": reset_game()
