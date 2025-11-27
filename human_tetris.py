@@ -190,6 +190,69 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
 
         # === 3. PLAYING ===
         elif game_state == "PLAYING":
+            if results.pose_landmarks:
+                # Vẽ bộ xương Neon
+                draw_neon_skeleton(image, results.pose_landmarks.landmark, combo)
+                
+                # Logic Game
+                landmarks = results.pose_landmarks.landmark
+                l_hip, r_hip = landmarks[23].y, landmarks[24].y
+                
+                success = False
+                if task_type == "ARM":
+                    l_ang = calculate_angle([landmarks[11].x, landmarks[11].y], [landmarks[13].x, landmarks[13].y], [landmarks[15].x, landmarks[15].y])
+                    r_ang = calculate_angle([landmarks[12].x, landmarks[12].y], [landmarks[14].x, landmarks[14].y], [landmarks[16].x, landmarks[16].y])
+                    t_l, t_r, tol = arm_poses[current_task]["left"], arm_poses[current_task]["right"], arm_poses[current_task]["tolerance"]
+                    if (((t_l-tol)<l_ang<(t_l+tol)) and ((t_r-tol)<r_ang<(t_r+tol))) or \
+                       (((t_r-tol)<l_ang<(t_r+tol)) and ((t_l-tol)<r_ang<(t_l+tol))):
+                        success = True
+                elif task_type == "LEG":
+                    if ((l_hip + r_hip)/2) > (base_y + 0.15): success = True
+                    else: cv2.line(image, (0, int((base_y+0.15)*h)), (w, int((base_y+0.15)*h)), (0,255,255), 2)
+
+                # Xử lý thời gian
+                time_left = current_duration - (time.time() - start_time)
+                if time_left <= 0:
+                    if success:
+                        score += 1
+                        combo += 1
+                        shake_timer = 3
+                        play_sound("combo" if combo > 2 else "score")
+                        txt = f"+1" if combo < 3 else f"COMBO x{combo}"
+                        color_txt = (0, 255, 0) if combo < 5 else (255, 0, 255)
+                        add_floating_text(txt, w//2 - 50, h//2, color_txt)
+                        if score % 3 == 0 and current_duration > 2.0: current_duration -= 0.5
+                    else:
+                        lives -= 1
+                        combo = 0
+                        shake_timer = 5
+                        play_sound("fail")
+                        add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
+                        if lives == 0:
+                            game_state = "GAMEOVER"
+                            play_sound("gameover")
+                            if score > high_score: 
+                                high_score = score
+                                save_high_score(high_score)
+                    new_round()
+
+                # UI Overlay
+                cv2.rectangle(image, (0, 0), (w, 20), (50, 50, 50), -1)
+                cv2.rectangle(image, (0, 0), (int(time_left/current_duration*w), 20), (0, 255, 0) if time_left>2 else (0,0,255), -1)
+                
+                cv2.putText(image, f"SCORE: {score}", (20, 60), 1, 1.5, (255, 255, 255), 2)
+                if combo > 1:
+                    cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
+                    cv2.putText(image, "FIRE!", (w-180, 100), 1, 1, (0, 165, 255), 2)
+
+                task_txt = current_task if task_type == "ARM" else "SQUAT DOWN!"
+                cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
+                
+                cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
+
+                # --- KHÔI PHỤC STICKMAN Ở ĐÂY ---
+                draw_stickman(image, current_task, 80, 180, 60)
+                cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
             # Vẽ bộ xương Neon thay vì xương mặc định
             if results.pose_landmarks:
                 draw_neon_skeleton(image, results.pose_landmarks.landmark, combo)
