@@ -1,5 +1,5 @@
 """
-ASSIGNMENT 2 KIOSK EDITION: AI EXER-GAME (FIXED SYNTAX)
+ASSIGNMENT 2 KIOSK EDITION: AI EXER-GAME (FINAL FIX)
 Tính năng:
 - Touchless UI: Dùng tay ảo để bấm nút Start/Restart.
 - Item Manager: Quản lý Tiền/Bom.
@@ -27,7 +27,7 @@ def play_sound(type):
             winsound.Beep(500, 150); winsound.Beep(400, 150); winsound.Beep(300, 400)
     threading.Thread(target=run, daemon=True).start()
 
-# --- 2. CLASS NÚT BẤM ẢO ---
+# --- 2. CLASS NÚT BẤM ẢO (ĐÃ SỬA LỖI) ---
 class Button:
     def __init__(self, text, x, y, w, h, color=(0, 255, 0)):
         self.text = text
@@ -51,15 +51,20 @@ class Button:
         text_y = y + (h + text_size[1]) // 2
         cv2.putText(img, self.text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 2)
 
-    def check_hover(self, landmarks, img_w, img_h):
-        pointers = [19, 20] 
+    # ĐÃ SỬA: Thêm tham số 'img' vào hàm này
+    def check_hover(self, img, landmarks, img_w, img_h):
+        pointers = [19, 20] # Ngón trỏ
         is_hovering = False
         x, y, w, h = self.rect
+        
         for idx in pointers:
             px = int(landmarks[idx].x * img_w)
             py = int(landmarks[idx].y * img_h)
+            
+            # Kiểm tra toạ độ
             if x < px < x + w and y < py < y + h:
                 is_hovering = True
+                # Vẽ vòng tròn ngón tay (Giờ đã có biến img để vẽ)
                 cv2.circle(img, (px, py), 15, (0, 255, 255), -1)
                 break
         
@@ -172,10 +177,8 @@ def calculate_angle(a, b, c):
     if angle > 180.0: angle = 360 - angle
     return angle
 
-# --- HÀM SỬA LỖI XUỐNG DÒNG (FIXED) ---
 def get_high_score():
-    if not os.path.exists("highscore.txt"):
-        return 0
+    if not os.path.exists("highscore.txt"): return 0
     try:
         with open("highscore.txt", "r") as f:
             return int(f.read())
@@ -244,7 +247,8 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
             # Vẽ nút START
             btn_start.draw(image)
             if results.pose_landmarks:
-                if btn_start.check_hover(results.pose_landmarks.landmark, w, h):
+                # ĐÃ SỬA: Truyền biến 'image' vào hàm check_hover
+                if btn_start.check_hover(image, results.pose_landmarks.landmark, w, h):
                     reset_game()
 
         # === CALIBRATION ===
@@ -326,14 +330,15 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
             btn_restart.draw(image)
             if results.pose_landmarks:
                 mp.solutions.drawing_utils.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-                if btn_restart.check_hover(results.pose_landmarks.landmark, w, h):
+                # ĐÃ SỬA: Truyền biến 'image' vào hàm check_hover
+                if btn_restart.check_hover(image, results.pose_landmarks.landmark, w, h):
                     reset_game()
 
         update_and_draw_effects(image)
         cv2.imshow('AI ExerGame Kiosk', image)
         key = cv2.waitKey(10) & 0xFF
         if key == ord('q'): break
-        # Vẫn giữ phím Space/R làm dự phòng (Backup)
+        # Vẫn giữ phím Space/R làm dự phòng
         if key == ord(' ') and game_state == "MENU": reset_game()
         if key == ord('r') and game_state == "GAMEOVER": reset_game()
 
