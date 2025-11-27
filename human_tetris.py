@@ -252,6 +252,16 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                 cv2.putText(image, f"NV: {task_display}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
                 cv2.putText(image, f"DIEM: {score} | MANG: {lives}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,215,0), 2)
                 cv2.putText(image, f"{time_left:.1f}", (w//2, h//2), cv2.FONT_HERSHEY_SIMPLEX, 3, status_color, 4)
+                # ... (Đoạn vẽ thanh thời gian ở trên giữ nguyên) ...
+
+                # VẼ MINH HỌA NGƯỜI QUE
+                # Gọi hàm vẽ: Vẽ tại vị trí x=80, y=180
+                draw_stickman(image, current_task, 80, 180, size=60)
+                
+                # Vẽ cái khung bao quanh người que cho đẹp
+                cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
+                
+                # ... (Đoạn vẽ điểm số ở dưới giữ nguyên) ...
 
             # --- GIAI ĐOẠN 3: GAME OVER ---
             elif lives == 0:
