@@ -1,13 +1,22 @@
+"""
+ASSIGNMENT 2: GAME "EXER-GAMING" - FULL BODY WORKOUT
+-------------------------------------------------------------------
+Đã sửa lỗi:
+1. Tư thế CSGT/Chéo Cánh: Cho phép đổi tay trái/phải thoải mái.
+2. Dọn dẹp code rác bị lặp.
+"""
+
 import cv2
 import mediapipe as mp
 import numpy as np
 import random
 import time
-import os # Thêm thư viện os để kiểm tra file tồn tại
+import os
 
+# --- 1. HÀM QUẢN LÝ ĐIỂM SỐ (HIGH SCORE) ---
 def get_high_score():
     if not os.path.exists("highscore.txt"):
-        return 0 # Nếu chưa có file thì trả về 0
+        return 0
     try:
         with open("highscore.txt", "r") as f:
             return int(f.read())
@@ -21,104 +30,82 @@ def save_high_score(new_score):
     except:
         pass
 
-# --- CẤU HÌNH ---
+# --- 2. CẤU HÌNH & DỮ LIỆU ---
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
 # Danh sách tư thế TAY
 arm_poses = {
-    "Luc Si (2 Tay Vuong)": {"left": 90, "right": 90, "tolerance": 25},
+    "Luc Si (2 Tay Vuong)":   {"left": 90,  "right": 90,  "tolerance": 25},
     "Chim Bay (2 Tay Thang)": {"left": 170, "right": 170, "tolerance": 25},
-    "CSGT (1 Thang 1 Vuong)": {"left": 170, "right": 90, "tolerance": 25},
+    "CSGT (1 Thang 1 Vuong)": {"left": 170, "right": 90,  "tolerance": 25}, # Đã sửa logic check ở dưới để chấp nhận ngược tay
 }
 
-# Danh sách tư thế CHÂN (Dựa trên độ lệch Y của hông)
-leg_poses = [
-    "SQUAT XUONG (Ne Dan)",
-    "DUNG THANG (Nghi ngoi)"
-]
+# --- 3. HÀM VẼ NGƯỜI QUE (STICKMAN) ---
 def draw_stickman(img, pose_name, x, y, size=80):
-    """
-    img: Ảnh nền (frame webcam)
-    pose_name: Tên tư thế cần vẽ
-    x, y: Tọa độ tâm ngực của người que
-    size: Kích thước cơ bản
-    """
     thickness = 3
-    color = (255, 255, 255) # Màu trắng
+    color = (255, 255, 255)
     
-    # 1. VẼ CƠ BẢN (Đầu + Thân)
-    # Đầu (Tròn)
+    # Đầu & Thân
     cv2.circle(img, (x, y - size//2), size//4, color, -1) 
-    # Thân (Thẳng)
     body_bottom = y + size//2
     cv2.line(img, (x, y), (x, body_bottom), color, thickness)
     
-    # 2. XỬ LÝ CHÂN (Legs)
-    # Nếu là Squat thì vẽ chân gập (hình chữ M ngược), còn lại đứng thẳng
-    if "SQUAT" in pose_name:
-        # Chân kiểu Squat (Gập gối)
-        cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size//3), color, thickness) # Đùi trái
-        cv2.line(img, (x - size//3, body_bottom + size//3), (x - size//4, body_bottom + size//2 + 10), color, thickness) # Cẳng trái
-        
-        cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size//3), color, thickness) # Đùi phải
-        cv2.line(img, (x + size//3, body_bottom + size//3), (x + size//4, body_bottom + size//2 + 10), color, thickness) # Cẳng phải
+    # Chân
+    if "SQUAT" in str(pose_name):
+        # Chân chữ M (Squat)
+        cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size//3), color, thickness)
+        cv2.line(img, (x - size//3, body_bottom + size//3), (x - size//4, body_bottom + size//2 + 10), color, thickness)
+        cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size//3), color, thickness)
+        cv2.line(img, (x + size//3, body_bottom + size//3), (x + size//4, body_bottom + size//2 + 10), color, thickness)
     else:
-        # Chân đứng thẳng (Hình chữ V ngược)
+        # Chân chữ V (Đứng)
         cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size), color, thickness)
         cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size), color, thickness)
 
-    # 3. XỬ LÝ TAY (Arms) - Phần quan trọng nhất
-    # Vai trái và phải
+    # Tay
     l_shoulder = (x - size//4, y)
     r_shoulder = (x + size//4, y)
-    
-    # Nối cổ sang 2 vai
     cv2.line(img, (x, y), l_shoulder, color, thickness)
     cv2.line(img, (x, y), r_shoulder, color, thickness)
 
-    # --- LOGIC VẼ TAY DỰA THEO TÊN TƯ THẾ ---
-    
-    # Mặc định (tay buông thõng)
+    # Logic tay theo tên
+    # Mặc định buông thõng
     l_elbow = (l_shoulder[0] - 10, l_shoulder[1] + 30)
     l_wrist = (l_elbow[0], l_elbow[1] + 20)
     r_elbow = (r_shoulder[0] + 10, r_shoulder[1] + 30)
     r_wrist = (r_elbow[0], r_elbow[1] + 20)
 
-    if "Luc Si" in pose_name: # 2 tay vuông góc lên trời
-        l_elbow = (l_shoulder[0] - 20, l_shoulder[1]) # Khuỷu ngang vai
-        l_wrist = (l_elbow[0], l_elbow[1] - 30)       # Cổ tay dựng lên
-        
+    if pose_name and "Luc Si" in pose_name:
+        l_elbow = (l_shoulder[0] - 20, l_shoulder[1])
+        l_wrist = (l_elbow[0], l_elbow[1] - 30)
         r_elbow = (r_shoulder[0] + 20, r_shoulder[1])
         r_wrist = (r_elbow[0], r_elbow[1] - 30)
 
-    elif "Chim Bay" in pose_name: # 2 tay dang thẳng
+    elif pose_name and "Chim Bay" in pose_name:
         l_elbow = (l_shoulder[0] - 20, l_shoulder[1])
-        l_wrist = (l_elbow[0] - 25, l_elbow[1])       # Cổ tay duỗi thẳng ra xa
-        
+        l_wrist = (l_elbow[0] - 25, l_elbow[1])
         r_elbow = (r_shoulder[0] + 20, r_shoulder[1])
         r_wrist = (r_elbow[0] + 25, r_elbow[1])
         
-    elif "Cheo Canh" in pose_name or "CSGT" in pose_name: # Trái thẳng, Phải vuông
-        # Tay trái thẳng
+    elif pose_name and ("Cheo Canh" in pose_name or "CSGT" in pose_name):
         l_elbow = (l_shoulder[0] - 20, l_shoulder[1])
         l_wrist = (l_elbow[0] - 25, l_elbow[1])
-        # Tay phải vuông
         r_elbow = (r_shoulder[0] + 20, r_shoulder[1])
         r_wrist = (r_elbow[0], r_elbow[1] - 30)
         
-    elif "SQUAT" in pose_name: # Squat thì tay thường thủ thế trước ngực
+    elif pose_name and "SQUAT" in pose_name:
         l_elbow = (l_shoulder[0], l_shoulder[1] + 20)
         l_wrist = (l_elbow[0] + 10, l_elbow[1] + 10)
         r_elbow = (r_shoulder[0], r_shoulder[1] + 20)
         r_wrist = (r_elbow[0] - 10, r_elbow[1] + 10)
 
-    # Vẽ tay theo toạ độ đã tính
     cv2.line(img, l_shoulder, l_elbow, color, thickness)
     cv2.line(img, l_elbow, l_wrist, color, thickness)
-    
     cv2.line(img, r_shoulder, r_elbow, color, thickness)
     cv2.line(img, r_elbow, r_wrist, color, thickness)
+
+# --- 4. HÀM TÍNH GÓC ---
 def calculate_angle(a, b, c):
     a = np.array(a)
     b = np.array(b)
@@ -128,40 +115,36 @@ def calculate_angle(a, b, c):
     if angle > 180.0: angle = 360 - angle
     return angle
 
-# --- BIẾN GAME ---
+# --- 5. KHỞI TẠO GAME ---
 score = 0
 lives = 3
-game_active = False # Chưa chơi ngay, cần Calibrate (lấy mốc) trước
-calibration_frames = 60 # Cần đứng im 2 giây (60 frames) để lấy mốc
-base_y = 0 # Vị trí hông chuẩn khi đứng
+game_active = False 
+calibration_frames = 60 
+base_y = 0 
 
 base_duration = 5.0
 current_duration = base_duration 
 start_time = time.time()
-
-score = 0
-high_score = get_high_score() # <--- THÊM DÒNG NÀY
+high_score = get_high_score()
 print(f"Ky luc hien tai: {high_score}")
 
-# Nhiệm vụ hiện tại: Có thể là Dict (Tay) hoặc String (Chân)
 current_task = None 
-task_type = None # "ARM" hoặc "LEG"
+task_type = None 
 
 def new_round():
     global current_task, task_type, start_time
     start_time = time.time()
-    
-    # Random: 70% ra tay, 30% ra chân
     if random.random() < 0.7:
         task_type = "ARM"
         current_task = random.choice(list(arm_poses.keys()))
     else:
         task_type = "LEG"
-        current_task = "SQUAT XUONG (Ne Dan)" # Hiện tại chỉ làm Squat cho đơn giản
+        current_task = "SQUAT XUONG (Ne Dan)"
 
 cap = cv2.VideoCapture(0)
 cv2.namedWindow('Full Body ExerGame', cv2.WINDOW_NORMAL)
 
+# --- 6. GAME LOOP ---
 with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
     while cap.isOpened():
         ret, frame = cap.read()
@@ -178,12 +161,11 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         if results.pose_landmarks:
             landmarks = results.pose_landmarks.landmark
             
-            # Lấy toạ độ trung bình của 2 bên hông (Hip)
             left_hip_y = landmarks[mp_pose.PoseLandmark.LEFT_HIP.value].y
             right_hip_y = landmarks[mp_pose.PoseLandmark.RIGHT_HIP.value].y
             current_hip_y = (left_hip_y + right_hip_y) / 2
 
-            # --- GIAI ĐOẠN 1: CALIBRATION (LẤY MỐC ĐỨNG) ---
+            # --- A. LẤY MỐC (CALIBRATION) ---
             if not game_active and lives > 0:
                 cv2.rectangle(image, (0,0), (w, h), (50, 50, 50), -1)
                 cv2.putText(image, "DUNG THANG DE LAY MOC", (w//2 - 250, h//2 - 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
@@ -191,19 +173,17 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                 
                 calibration_frames -= 1
                 if calibration_frames <= 0:
-                    base_y = current_hip_y # Lưu vị trí hông chuẩn
+                    base_y = current_hip_y
                     game_active = True
                     new_round()
-                    print(f"Da lay moc HONG: {base_y}")
 
-            # --- GIAI ĐOẠN 2: GAMEPLAY ---
+            # --- B. CHƠI GAME ---
             elif game_active:
-                # 1. XỬ LÝ NHIỆM VỤ
                 success = False
                 
-                # Nếu là bài tập TAY
+                # B.1: KIỂM TRA TAY
                 if task_type == "ARM":
-                    # Lấy toạ độ tay
+                    # Lấy toạ độ
                     l_sh = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x, landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
                     l_el = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x, landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
                     l_wr = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
@@ -214,40 +194,41 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                     r_wr = [landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].x, landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value].y]
                     angle_right = calculate_angle(r_sh, r_el, r_wr)
 
-                    # Kiểm tra logic
+                    # Lấy mục tiêu
                     target_l = arm_poses[current_task]["left"]
                     target_r = arm_poses[current_task]["right"]
                     tol = arm_poses[current_task]["tolerance"]
                     
-                    if (target_l - tol) < angle_left < (target_l + tol) and \
-                       (target_r - tol) < angle_right < (target_r + tol):
+                    # --- SỬA LỖI 1: LOGIC LINH HOẠT CHO PHÉP ĐỔI TAY ---
+                    # Trường hợp 1: Tay Trái = Target Trái VÀ Tay Phải = Target Phải (Làm đúng chiều)
+                    case_normal = ((target_l - tol) < angle_left < (target_l + tol)) and \
+                                  ((target_r - tol) < angle_right < (target_r + tol))
+                    
+                    # Trường hợp 2: Tay Trái = Target Phải VÀ Tay Phải = Target Trái (Làm ngược chiều vẫn OK)
+                    case_swapped = ((target_r - tol) < angle_left < (target_r + tol)) and \
+                                   ((target_l - tol) < angle_right < (target_l + tol))
+                                   
+                    if case_normal or case_swapped:
                         success = True
 
-                    # Vẽ số đo tay
                     cv2.putText(image, str(int(angle_left)), tuple(np.multiply(l_el, [w, h]).astype(int)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
                     cv2.putText(image, str(int(angle_right)), tuple(np.multiply(r_el, [w, h]).astype(int)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
 
-                # Nếu là bài tập CHÂN (SQUAT)
+                # B.2: KIỂM TRA CHÂN
                 elif task_type == "LEG":
-                    # Logic Squat: Hông hiện tại thấp hơn Hông chuẩn một khoảng (ví dụ 0.1 đơn vị ảnh)
-                    # Lưu ý: Trục Y của ảnh đi từ trên xuống (0 ở trên, 1 ở dưới) -> Càng xuống thấp Y càng tăng
-                    squat_threshold = base_y + 0.15 # Phải ngồi thấp xuống ít nhất 15% chiều cao ảnh
-                    
-                    if current_hip_y > squat_threshold: # Đang ngồi
+                    squat_threshold = base_y + 0.15
+                    if current_hip_y > squat_threshold:
                         success = True
                         cv2.putText(image, "DA SQUAT!", (w//2 - 100, h - 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
                     else:
                         cv2.putText(image, "NGOI THAP XUONG!", (w//2 - 150, h - 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
                     
-                    # Vẽ vạch chuẩn để người chơi biết phải ngồi qua vạch đó
                     line_y = int(squat_threshold * h)
                     cv2.line(image, (0, line_y), (w, line_y), (0, 255, 255), 2)
 
-                # 2. XỬ LÝ THỜI GIAN
+                # B.3: XỬ LÝ THỜI GIAN
                 elapsed = time.time() - start_time
                 time_left = current_duration - elapsed
-                
-                # Feedback màu sắc
                 status_color = (0, 255, 0) if success else (0, 0, 255)
                 
                 if time_left <= 0:
@@ -258,45 +239,45 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                     else:
                         lives -= 1
                         if lives == 0:
-                            game_active = False # Game Over -> Chuyển sang màn hình thua
-                    
+                            game_active = False 
                     new_round()
 
-                # 3. VẼ UI
-                # Thanh thời gian
+                # B.4: VẼ UI (GIAO DIỆN)
                 bar_width = int((time_left / current_duration) * w)
                 cv2.rectangle(image, (0, h-20), (bar_width, h), status_color, -1)
                 
-                # Thông tin
                 cv2.rectangle(image, (0,0), (500, 100), (50, 50, 50), -1)
                 task_display = current_task if task_type == "ARM" else "!!! SQUAT XUONG !!!"
-                cv2.putText(image, f"NV: {task_display}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,255), 2)
+                cv2.putText(image, f"NV: {task_display}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
                 cv2.putText(image, f"DIEM: {score} | MANG: {lives}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,215,0), 2)
                 cv2.putText(image, f"{time_left:.1f}", (w//2, h//2), cv2.FONT_HERSHEY_SIMPLEX, 3, status_color, 4)
-                # ... (Đoạn vẽ thanh thời gian ở trên giữ nguyên) ...
-
-                # VẼ MINH HỌA NGƯỜI QUE
-                # Gọi hàm vẽ: Vẽ tại vị trí x=80, y=180
-                draw_stickman(image, current_task, 80, 180, size=60)
                 
-                # Vẽ cái khung bao quanh người que cho đẹp
-                cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
-                
-                # ... (Đoạn vẽ điểm số ở dưới giữ nguyên) ...
-
-                # ... (Code cũ vẽ DIEM và MANG) ...
-                cv2.putText(image, f"DIEM: {score} | MANG: {lives}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,215,0), 2)
-                
-                # <--- THÊM ĐOẠN NÀY: Vẽ Kỷ lục ở góc phải trên cùng
+                # Vẽ Kỷ lục
                 cv2.putText(image, f"TOP: {high_score}", (w - 180, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
 
-            # --- GIAI ĐOẠN 3: GAME OVER ---
+                # Vẽ Stickman
+                draw_stickman(image, current_task, 80, 180, size=60)
+                cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
+
+            # --- C. GAME OVER ---
             elif lives == 0:
+                if score > high_score:
+                    high_score = score
+                    save_high_score(high_score)
+                    msg_hscore = "PHA KY LUC MOI!"
+                    color_hscore = (0, 255, 0)
+                else:
+                    msg_hscore = f"Ky luc van la: {high_score}"
+                    color_hscore = (200, 200, 200)
+
                 overlay = image.copy()
                 cv2.rectangle(overlay, (0, 0), (w, h), (0, 0, 0), -1)
                 image = cv2.addWeighted(overlay, 0.8, image, 0.2, 0)
-                cv2.putText(image, "GAME OVER", (w//2 - 180, h//2), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
-                cv2.putText(image, "Nhan 'R' de Reset", (w//2 - 150, h//2 + 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                
+                cv2.putText(image, "GAME OVER", (w//2 - 180, h//2 - 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
+                cv2.putText(image, f"Tong Diem: {score}", (w//2 - 140, h//2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 2)
+                cv2.putText(image, msg_hscore, (w//2 - 180, h//2 + 70), cv2.FONT_HERSHEY_SIMPLEX, 1, color_hscore, 2)
+                cv2.putText(image, "Nhan 'R' de Reset", (w//2 - 150, h//2 + 120), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
             mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
@@ -304,11 +285,11 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         
         key = cv2.waitKey(10) & 0xFF
         if key == ord('q'): break
-        if key == ord('r') and lives == 0: # Reset
+        if key == ord('r') and lives == 0:
             lives = 3
             score = 0
             current_duration = 5.0
-            calibration_frames = 60 # Cần lấy lại mốc vì có thể người chơi đã di chuyển
+            calibration_frames = 60
             game_active = False
 
 cap.release()
