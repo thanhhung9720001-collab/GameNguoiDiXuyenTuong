@@ -1,11 +1,8 @@
 """
-ASSIGNMENT 2 ULTIMATE: AI EXER-GAME - NEON EDITION (FIXED)
-Tính năng:
-- Custom Neon Skeleton (Bộ xương phát sáng)
-- Combo System & Fever Mode
-- Floating Text (Hiệu ứng chữ bay)
-- Screen Shake (Rung màn hình)
-- Stickman UI (Đã sửa lỗi)
+ASSIGNMENT 2 ULTIMATE PRO: AI EXER-GAME
+Tính năng mới (Sprint 12):
+- Bonus Coins: Tiền thưởng xuất hiện ngẫu nhiên.
+- Interactive: Dùng tay chạm vào tiền để ăn điểm.
 """
 import cv2
 import mediapipe as mp
@@ -15,11 +12,13 @@ import time
 import os
 import winsound
 import threading
+import math # Dùng để tính khoảng cách va chạm
 
 # --- 1. HỆ THỐNG ÂM THANH & HIỆU ỨNG ---
 def play_sound(type):
     def run():
         if type == "score": winsound.Beep(1000, 80)
+        elif type == "coin": winsound.Beep(2000, 50) # Tiếng ăn tiền cao vút
         elif type == "combo": winsound.Beep(1500, 100)
         elif type == "fail": winsound.Beep(300, 300)
         elif type == "gameover": 
@@ -41,17 +40,68 @@ def update_and_draw_effects(img):
         else:
             cv2.putText(img, ft['text'], tuple(ft['pos']), cv2.FONT_HERSHEY_SIMPLEX, 1.5, ft['color'], 3)
 
-# --- 3. HÀM VẼ NGƯỜI QUE (STICKMAN) - ĐÃ THÊM LẠI ---
-def draw_stickman(img, pose_name, x, y, size=80):
-    thickness = 3
-    color = (255, 255, 255)
+# --- 3. CLASS QUẢN LÝ TIỀN THƯỞNG (NEW) ---
+class CoinSystem:
+    def __init__(self):
+        self.coins = [] # Danh sách tiền: {'x', 'y', 'radius', 'active'}
+        self.spawn_timer = 0
     
-    # Đầu & Thân
+    def update(self, img_w, img_h):
+        # 1. Sinh ra tiền ngẫu nhiên (Khoảng 2 giây ra 1 xu)
+        self.spawn_timer += 1
+        if self.spawn_timer > 60: 
+            self.spawn_timer = 0
+            if random.random() < 0.7: # 70% cơ hội xuất hiện
+                self.coins.append({
+                    'x': random.randint(50, img_w - 50),
+                    'y': -50, # Bắt đầu rơi từ trên cao
+                    'radius': 30,
+                    'speed': random.randint(5, 10), # Tốc độ rơi ngẫu nhiên
+                    'color': (0, 255, 255) # Màu vàng
+                })
+
+        # 2. Cập nhật vị trí rơi
+        for coin in self.coins[:]:
+            coin['y'] += coin['speed']
+            # Nếu rơi ra khỏi màn hình thì xoá
+            if coin['y'] > img_h + 50:
+                self.coins.remove(coin)
+
+    def draw(self, img):
+        for coin in self.coins:
+            # Vẽ hình tròn tiền (Viền trắng, ruột vàng)
+            cv2.circle(img, (coin['x'], coin['y']), coin['radius'], coin['color'], -1)
+            cv2.circle(img, (coin['x'], coin['y']), coin['radius'], (255, 255, 255), 2)
+            cv2.putText(img, "$", (coin['x']-10, coin['y']+10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,0), 2)
+
+    def check_collision(self, hand_landmarks, img_w, img_h):
+        # Kiểm tra va chạm với cả 2 tay (Cổ tay trái [15] và phải [16])
+        hit_score = 0
+        hands = [15, 16, 19, 20] # Cổ tay và Ngón trỏ
+        
+        for coin in self.coins[:]:
+            for idx in hands:
+                # Lấy toạ độ tay
+                hand_x = int(hand_landmarks[idx].x * img_w)
+                hand_y = int(hand_landmarks[idx].y * img_h)
+                
+                # Tính khoảng cách (Pythagore)
+                distance = math.sqrt((hand_x - coin['x'])**2 + (hand_y - coin['y'])**2)
+                
+                if distance < coin['radius'] + 20: # +20 là bán kính tay ảo
+                    self.coins.remove(coin)
+                    hit_score += 1 # Cộng 1 điểm phụ
+                    play_sound("coin")
+                    add_floating_text("+5 BONUS", coin['x'], coin['y'], (0, 255, 255))
+                    break # Đã ăn rồi thì thôi check ngón khác
+        return hit_score
+
+# --- 4. CÁC HÀM VẼ CŨ (GIỮ NGUYÊN) ---
+def draw_stickman(img, pose_name, x, y, size=80):
+    thickness = 3; color = (255, 255, 255)
     cv2.circle(img, (x, y - size//2), size//4, color, -1) 
     body_bottom = y + size//2
     cv2.line(img, (x, y), (x, body_bottom), color, thickness)
-    
-    # Chân
     if pose_name and "SQUAT" in str(pose_name):
         cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size//3), color, thickness)
         cv2.line(img, (x - size//3, body_bottom + size//3), (x - size//4, body_bottom + size//2 + 10), color, thickness)
@@ -60,63 +110,42 @@ def draw_stickman(img, pose_name, x, y, size=80):
     else:
         cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size), color, thickness)
         cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size), color, thickness)
-
-    # Tay
-    l_shoulder = (x - size//4, y)
-    r_shoulder = (x + size//4, y)
-    
-    l_elbow, l_wrist = (l_shoulder[0]-10, l_shoulder[1]+30), (l_shoulder[0]-10, l_shoulder[1]+50)
-    r_elbow, r_wrist = (r_shoulder[0]+10, r_shoulder[1]+30), (r_shoulder[0]+10, r_shoulder[1]+50)
-
+    l_sh = (x - size//4, y); r_sh = (x + size//4, y)
+    l_elbow, l_wrist = (l_sh[0]-10, l_sh[1]+30), (l_sh[0]-10, l_sh[1]+50)
+    r_elbow, r_wrist = (r_sh[0]+10, r_sh[1]+30), (r_sh[0]+10, r_sh[1]+50)
     if pose_name and "Luc Si" in pose_name:
-        l_elbow, l_wrist = (l_shoulder[0]-20, l_shoulder[1]), (l_shoulder[0]-20, l_shoulder[1]-30)
-        r_elbow, r_wrist = (r_shoulder[0]+20, r_shoulder[1]), (r_shoulder[0]+20, r_shoulder[1]-30)
+        l_elbow, l_wrist = (l_sh[0]-20, l_sh[1]), (l_sh[0]-20, l_sh[1]-30)
+        r_elbow, r_wrist = (r_sh[0]+20, r_sh[1]), (r_sh[0]+20, r_sh[1]-30)
     elif pose_name and "Chim Bay" in pose_name:
-        l_elbow, l_wrist = (l_shoulder[0]-20, l_shoulder[1]), (l_shoulder[0]-45, l_shoulder[1])
-        r_elbow, r_wrist = (r_shoulder[0]+20, r_shoulder[1]), (r_shoulder[0]+45, r_shoulder[1])
+        l_elbow, l_wrist = (l_sh[0]-20, l_sh[1]), (l_sh[0]-45, l_sh[1])
+        r_elbow, r_wrist = (r_sh[0]+20, r_sh[1]), (r_sh[0]+45, r_sh[1])
     elif pose_name and ("Cheo Canh" in pose_name or "CSGT" in pose_name):
-        l_elbow, l_wrist = (l_shoulder[0]-20, l_shoulder[1]), (l_shoulder[0]-45, l_shoulder[1])
-        r_elbow, r_wrist = (r_shoulder[0]+20, r_shoulder[1]), (r_shoulder[0]+20, r_shoulder[1]-30)
+        l_elbow, l_wrist = (l_sh[0]-20, l_sh[1]), (l_sh[0]-45, l_sh[1])
+        r_elbow, r_wrist = (r_sh[0]+20, r_sh[1]), (r_sh[0]+20, r_sh[1]-30)
     elif pose_name and "SQUAT" in pose_name:
-        l_elbow, l_wrist = (l_shoulder[0], l_shoulder[1]+20), (l_shoulder[0]+10, l_shoulder[1]+10)
-        r_elbow, r_wrist = (r_shoulder[0], r_shoulder[1]+20), (r_shoulder[0]-10, r_shoulder[1]+10)
+        l_elbow, l_wrist = (l_sh[0], l_sh[1]+20), (l_sh[0]+10, l_sh[1]+10)
+        r_elbow, r_wrist = (r_sh[0], r_sh[1]+20), (r_sh[0]-10, r_sh[1]+10)
+    cv2.line(img, (x, y), l_sh, color, thickness); cv2.line(img, (x, y), r_sh, color, thickness)
+    cv2.line(img, l_sh, l_elbow, color, thickness); cv2.line(img, l_elbow, l_wrist, color, thickness)
+    cv2.line(img, r_sh, r_elbow, color, thickness); cv2.line(img, r_elbow, r_wrist, color, thickness)
 
-    # Vẽ tay
-    cv2.line(img, (x, y), l_shoulder, color, thickness)
-    cv2.line(img, (x, y), r_shoulder, color, thickness)
-    cv2.line(img, l_shoulder, l_elbow, color, thickness)
-    cv2.line(img, l_elbow, l_wrist, color, thickness)
-    cv2.line(img, r_shoulder, r_elbow, color, thickness)
-    cv2.line(img, r_elbow, r_wrist, color, thickness)
-
-# --- 4. HÀM VẼ XƯƠNG NEON ---
-CONNECTIONS = [
-    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), 
-    (11, 23), (12, 24), (23, 24), 
-    (23, 25), (24, 26), (25, 27), (26, 28) 
-]
-
+CONNECTIONS = [(11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24), (23, 25), (24, 26), (25, 27), (26, 28)]
 def draw_neon_skeleton(img, landmarks, combo):
     h, w, _ = img.shape
-    
     if combo < 3: color = (0, 255, 0) 
     elif combo < 6: color = (0, 255, 255) 
     elif combo < 10: color = (0, 165, 255) 
     else: color = (255, 0, 255) 
-    
     thickness = 2 + (combo // 3) 
-    
     for start_idx, end_idx in CONNECTIONS:
         start = (int(landmarks[start_idx].x * w), int(landmarks[start_idx].y * h))
         end = (int(landmarks[end_idx].x * w), int(landmarks[end_idx].y * h))
         cv2.line(img, start, end, (0, 0, 0), thickness + 4)
         cv2.line(img, start, end, color, thickness)
-        
     key_joints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26]
     for idx in key_joints:
         cx, cy = int(landmarks[idx].x * w), int(landmarks[idx].y * h)
-        cv2.circle(img, (cx, cy), 8, (255, 255, 255), -1)
-        cv2.circle(img, (cx, cy), 8, color, 2)
+        cv2.circle(img, (cx, cy), 8, (255, 255, 255), -1); cv2.circle(img, (cx, cy), 8, color, 2)
 
 # --- 5. CẤU HÌNH & GAME STATE ---
 mp_pose = mp.solutions.pose
@@ -143,58 +172,47 @@ def save_high_score(n):
         with open("highscore.txt", "w") as f: f.write(str(n))
     except: pass
 
-score = 0
-lives = 3
-combo = 0 
-high_score = get_high_score()
-game_state = "MENU"
-base_y = 0
-shake_timer = 0 
+# BIẾN GAME
+score = 0; lives = 3; combo = 0; high_score = get_high_score()
+game_state = "MENU"; base_y = 0; shake_timer = 0 
+current_task = None; task_type = None; start_time = time.time(); current_duration = 5.0
+calibration_frames = 60
 
-current_task = None
-task_type = None
-start_time = time.time()
-current_duration = 5.0
+# KHỞI TẠO HỆ THỐNG COIN
+coin_system = CoinSystem()
 
 def new_round():
     global current_task, task_type, start_time
     start_time = time.time()
     if random.random() < 0.7:
-        task_type = "ARM"
-        current_task = random.choice(list(arm_poses.keys()))
+        task_type = "ARM"; current_task = random.choice(list(arm_poses.keys()))
     else:
-        task_type = "LEG"
-        current_task = "SQUAT XUONG (Ne Dan)"
+        task_type = "LEG"; current_task = "SQUAT XUONG (Ne Dan)"
 
 def reset_game():
-    global score, lives, combo, current_duration, game_state, calibration_frames
-    score = 0
-    lives = 3
-    combo = 0
-    current_duration = 5.0
-    calibration_frames = 60
-    game_state = "CALIBRATION"
+    global score, lives, combo, current_duration, game_state, calibration_frames, coin_system
+    score = 0; lives = 3; combo = 0; current_duration = 5.0
+    calibration_frames = 60; game_state = "CALIBRATION"
+    coin_system = CoinSystem() # Reset tiền
 
 # --- 6. MAIN LOOP ---
 cap = cv2.VideoCapture(0)
-cv2.namedWindow('Neon Arcade ExerGame', cv2.WINDOW_NORMAL)
+cv2.namedWindow('AI ExerGame Ultimate', cv2.WINDOW_NORMAL)
 
 with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
-        
         frame = cv2.flip(frame, 1)
         
+        # Screen Shake Effect
         if shake_timer > 0:
-            shake_x = random.randint(-10, 10)
-            shake_y = random.randint(-10, 10)
+            shake_x = random.randint(-10, 10); shake_y = random.randint(-10, 10)
             M = np.float32([[1, 0, shake_x], [0, 1, shake_y]])
             frame = cv2.warpAffine(frame, M, (frame.shape[1], frame.shape[0]))
             shake_timer -= 1
 
         if game_state == "MENU": frame = cv2.convertScaleAbs(frame, alpha=0.6, beta=0)
-
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
         results = pose.process(image)
@@ -205,9 +223,8 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         # === MENU ===
         if game_state == "MENU":
             cv2.rectangle(image, (0, h//2-100), (w, h//2+100), (0,0,0), -1)
-            cv2.putText(image, "NEON EXER-GAME", (w//2-230, h//2-20), 1, 3, (0,255,255), 5)
-            if int(time.time()*2) % 2 == 0:
-                cv2.putText(image, "PRESS SPACE TO START", (w//2-200, h//2+50), 1, 1, (255,255,255), 2)
+            cv2.putText(image, "AI EXER-GAME PRO", (w//2-250, h//2-20), 1, 3, (0,255,255), 5)
+            if int(time.time()*2) % 2 == 0: cv2.putText(image, "PRESS SPACE TO START", (w//2-200, h//2+50), 1, 1, (255,255,255), 2)
             cv2.putText(image, f"TOP SCORE: {high_score}", (w//2-120, h//2+150), 1, 1, (255,215,0), 2)
 
         # === CALIBRATION ===
@@ -218,87 +235,74 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
                 cv2.putText(image, str(calibration_frames//10), (w//2-20, h//2+50), 1, 3, (255,255,255), 5)
                 calibration_frames -= 1
                 if calibration_frames <= 0:
-                    base_y = current_hip_y
-                    game_state = "PLAYING"
-                    new_round()
-                    play_sound("score")
+                    base_y = current_hip_y; game_state = "PLAYING"; new_round(); play_sound("score")
 
         # === PLAYING ===
         elif game_state == "PLAYING":
             if results.pose_landmarks:
+                # 1. Vẽ Xương & Stickman
                 draw_neon_skeleton(image, results.pose_landmarks.landmark, combo)
+                draw_stickman(image, current_task, 80, 180, 60)
+                cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
                 
+                # 2. Xử lý Logic Pose (Tay/Chân)
                 landmarks = results.pose_landmarks.landmark
                 l_hip, r_hip = landmarks[23].y, landmarks[24].y
-                
                 success = False
                 if task_type == "ARM":
                     l_ang = calculate_angle([landmarks[11].x, landmarks[11].y], [landmarks[13].x, landmarks[13].y], [landmarks[15].x, landmarks[15].y])
                     r_ang = calculate_angle([landmarks[12].x, landmarks[12].y], [landmarks[14].x, landmarks[14].y], [landmarks[16].x, landmarks[16].y])
                     t_l, t_r, tol = arm_poses[current_task]["left"], arm_poses[current_task]["right"], arm_poses[current_task]["tolerance"]
-                    if (((t_l-tol)<l_ang<(t_l+tol)) and ((t_r-tol)<r_ang<(t_r+tol))) or \
-                       (((t_r-tol)<l_ang<(t_r+tol)) and ((t_l-tol)<r_ang<(t_l+tol))):
-                        success = True
+                    if (((t_l-tol)<l_ang<(t_l+tol)) and ((t_r-tol)<r_ang<(t_r+tol))) or (((t_r-tol)<l_ang<(t_r+tol)) and ((t_l-tol)<r_ang<(t_l+tol))): success = True
                 elif task_type == "LEG":
                     if ((l_hip + r_hip)/2) > (base_y + 0.15): success = True
                     else: cv2.line(image, (0, int((base_y+0.15)*h)), (w, int((base_y+0.15)*h)), (0,255,255), 2)
 
+                # 3. Xử lý Coin System (MỚI)
+                coin_system.update(w, h)
+                coin_system.draw(image)
+                # Check va chạm tay với tiền -> Cộng 5 điểm mỗi đồng
+                bonus_points = coin_system.check_collision(landmarks, w, h)
+                if bonus_points > 0:
+                    score += (bonus_points * 5) # Mỗi đồng ăn 5 điểm
+
+                # 4. Xử lý thời gian Game
                 time_left = current_duration - (time.time() - start_time)
                 if time_left <= 0:
                     if success:
-                        score += 1
-                        combo += 1
-                        shake_timer = 3
+                        score += 1; combo += 1; shake_timer = 3
                         play_sound("combo" if combo > 2 else "score")
                         txt = f"+1" if combo < 3 else f"COMBO x{combo}"
                         color_txt = (0, 255, 0) if combo < 5 else (255, 0, 255)
                         add_floating_text(txt, w//2 - 50, h//2, color_txt)
                         if score % 3 == 0 and current_duration > 2.0: current_duration -= 0.5
                     else:
-                        lives -= 1
-                        combo = 0
-                        shake_timer = 5
-                        play_sound("fail")
-                        add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
+                        lives -= 1; combo = 0; shake_timer = 5
+                        play_sound("fail"); add_floating_text("MISS!", w//2 - 50, h//2, (0, 0, 255))
                         if lives == 0:
-                            game_state = "GAMEOVER"
-                            play_sound("gameover")
-                            if score > high_score: 
-                                high_score = score
-                                save_high_score(high_score)
+                            game_state = "GAMEOVER"; play_sound("gameover")
+                            if score > high_score: high_score = score; save_high_score(high_score)
                     new_round()
 
                 # UI Overlay
                 cv2.rectangle(image, (0, 0), (w, 20), (50, 50, 50), -1)
                 cv2.rectangle(image, (0, 0), (int(time_left/current_duration*w), 20), (0, 255, 0) if time_left>2 else (0,0,255), -1)
-                
                 cv2.putText(image, f"SCORE: {score}", (20, 60), 1, 1.5, (255, 255, 255), 2)
-                if combo > 1:
-                    cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
-                    cv2.putText(image, "FIRE!", (w-180, 100), 1, 1, (0, 165, 255), 2)
-
+                if combo > 1: cv2.putText(image, f"{combo} COMBO", (w-250, 60), 1, 1.5, (255, 0, 255), 3)
                 task_txt = current_task if task_type == "ARM" else "SQUAT DOWN!"
                 cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
-                
                 cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
-                
-                # VẼ STICKMAN (Đã có hàm để gọi)
-                draw_stickman(image, current_task, 80, 180, 60)
-                cv2.rectangle(image, (20, 120), (140, 260), (255, 255, 255), 2)
 
         # === GAMEOVER ===
         elif game_state == "GAMEOVER":
-            overlay = image.copy()
-            cv2.rectangle(overlay, (0, 0), (w, h), (0,0,0), -1)
+            overlay = image.copy(); cv2.rectangle(overlay, (0, 0), (w, h), (0,0,0), -1)
             image = cv2.addWeighted(overlay, 0.8, image, 0.2, 0)
             cv2.putText(image, "GAME OVER", (w//2-180, h//2), 1, 3, (0,0,255), 5)
             cv2.putText(image, f"SCORE: {score}", (w//2-100, h//2+60), 1, 2, (255,255,255), 2)
-            if score == high_score and score > 0:
-                cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+120), 1, 1.5, (0,255,0), 3)
+            if score == high_score and score > 0: cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+120), 1, 1.5, (0,255,0), 3)
 
         update_and_draw_effects(image)
-        
-        cv2.imshow('Neon Arcade ExerGame', image)
+        cv2.imshow('AI ExerGame Ultimate', image)
         key = cv2.waitKey(10) & 0xFF
         if key == ord('q'): break
         if key == ord(' ') and game_state == "MENU": reset_game()
