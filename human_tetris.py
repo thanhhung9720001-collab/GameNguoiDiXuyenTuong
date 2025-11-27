@@ -20,7 +20,88 @@ leg_poses = [
     "SQUAT XUONG (Ne Dan)",
     "DUNG THANG (Nghi ngoi)"
 ]
+def draw_stickman(img, pose_name, x, y, size=80):
+    """
+    img: Ảnh nền (frame webcam)
+    pose_name: Tên tư thế cần vẽ
+    x, y: Tọa độ tâm ngực của người que
+    size: Kích thước cơ bản
+    """
+    thickness = 3
+    color = (255, 255, 255) # Màu trắng
+    
+    # 1. VẼ CƠ BẢN (Đầu + Thân)
+    # Đầu (Tròn)
+    cv2.circle(img, (x, y - size//2), size//4, color, -1) 
+    # Thân (Thẳng)
+    body_bottom = y + size//2
+    cv2.line(img, (x, y), (x, body_bottom), color, thickness)
+    
+    # 2. XỬ LÝ CHÂN (Legs)
+    # Nếu là Squat thì vẽ chân gập (hình chữ M ngược), còn lại đứng thẳng
+    if "SQUAT" in pose_name:
+        # Chân kiểu Squat (Gập gối)
+        cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size//3), color, thickness) # Đùi trái
+        cv2.line(img, (x - size//3, body_bottom + size//3), (x - size//4, body_bottom + size//2 + 10), color, thickness) # Cẳng trái
+        
+        cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size//3), color, thickness) # Đùi phải
+        cv2.line(img, (x + size//3, body_bottom + size//3), (x + size//4, body_bottom + size//2 + 10), color, thickness) # Cẳng phải
+    else:
+        # Chân đứng thẳng (Hình chữ V ngược)
+        cv2.line(img, (x, body_bottom), (x - size//3, body_bottom + size), color, thickness)
+        cv2.line(img, (x, body_bottom), (x + size//3, body_bottom + size), color, thickness)
 
+    # 3. XỬ LÝ TAY (Arms) - Phần quan trọng nhất
+    # Vai trái và phải
+    l_shoulder = (x - size//4, y)
+    r_shoulder = (x + size//4, y)
+    
+    # Nối cổ sang 2 vai
+    cv2.line(img, (x, y), l_shoulder, color, thickness)
+    cv2.line(img, (x, y), r_shoulder, color, thickness)
+
+    # --- LOGIC VẼ TAY DỰA THEO TÊN TƯ THẾ ---
+    
+    # Mặc định (tay buông thõng)
+    l_elbow = (l_shoulder[0] - 10, l_shoulder[1] + 30)
+    l_wrist = (l_elbow[0], l_elbow[1] + 20)
+    r_elbow = (r_shoulder[0] + 10, r_shoulder[1] + 30)
+    r_wrist = (r_elbow[0], r_elbow[1] + 20)
+
+    if "Luc Si" in pose_name: # 2 tay vuông góc lên trời
+        l_elbow = (l_shoulder[0] - 20, l_shoulder[1]) # Khuỷu ngang vai
+        l_wrist = (l_elbow[0], l_elbow[1] - 30)       # Cổ tay dựng lên
+        
+        r_elbow = (r_shoulder[0] + 20, r_shoulder[1])
+        r_wrist = (r_elbow[0], r_elbow[1] - 30)
+
+    elif "Chim Bay" in pose_name: # 2 tay dang thẳng
+        l_elbow = (l_shoulder[0] - 20, l_shoulder[1])
+        l_wrist = (l_elbow[0] - 25, l_elbow[1])       # Cổ tay duỗi thẳng ra xa
+        
+        r_elbow = (r_shoulder[0] + 20, r_shoulder[1])
+        r_wrist = (r_elbow[0] + 25, r_elbow[1])
+        
+    elif "Cheo Canh" in pose_name or "CSGT" in pose_name: # Trái thẳng, Phải vuông
+        # Tay trái thẳng
+        l_elbow = (l_shoulder[0] - 20, l_shoulder[1])
+        l_wrist = (l_elbow[0] - 25, l_elbow[1])
+        # Tay phải vuông
+        r_elbow = (r_shoulder[0] + 20, r_shoulder[1])
+        r_wrist = (r_elbow[0], r_elbow[1] - 30)
+        
+    elif "SQUAT" in pose_name: # Squat thì tay thường thủ thế trước ngực
+        l_elbow = (l_shoulder[0], l_shoulder[1] + 20)
+        l_wrist = (l_elbow[0] + 10, l_elbow[1] + 10)
+        r_elbow = (r_shoulder[0], r_shoulder[1] + 20)
+        r_wrist = (r_elbow[0] - 10, r_elbow[1] + 10)
+
+    # Vẽ tay theo toạ độ đã tính
+    cv2.line(img, l_shoulder, l_elbow, color, thickness)
+    cv2.line(img, l_elbow, l_wrist, color, thickness)
+    
+    cv2.line(img, r_shoulder, r_elbow, color, thickness)
+    cv2.line(img, r_elbow, r_wrist, color, thickness)
 def calculate_angle(a, b, c):
     a = np.array(a)
     b = np.array(b)
