@@ -1,5 +1,5 @@
 """
-ASSIGNMENT 2 MATRIX EDITION: AI EXER-GAME
+ASSIGNMENT 2 MATRIX EDITION: AI EXER-GAME (FIXED)
 Tính năng mới (Sprint 13):
 - Falling Bombs: Vật cản rơi từ trên xuống, chạm vào là mất mạng.
 - Item Manager: Quản lý cả Tiền và Bom.
@@ -169,12 +169,20 @@ def calculate_angle(a, b, c):
     return angle
 
 def get_high_score():
-    if not os.path.exists("highscore.txt"): return 0
-    try: with open("highscore.txt", "r") as f: return int(f.read())
-    except: return 0
+    if not os.path.exists("highscore.txt"): 
+        return 0
+    try:
+        with open("highscore.txt", "r") as f:
+            return int(f.read())
+    except:
+        return 0
+
 def save_high_score(n):
-    try: with open("highscore.txt", "w") as f: f.write(str(n))
-    except: pass
+    try:
+        with open("highscore.txt", "w") as f:
+            f.write(str(n))
+    except:
+        pass
 
 score = 0; lives = 3; combo = 0; high_score = get_high_score()
 game_state = "MENU"; base_y = 0; shake_timer = 0 
