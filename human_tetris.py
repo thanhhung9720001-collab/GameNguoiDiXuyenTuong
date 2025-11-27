@@ -3,6 +3,23 @@ import mediapipe as mp
 import numpy as np
 import random
 import time
+import os # Thêm thư viện os để kiểm tra file tồn tại
+
+def get_high_score():
+    if not os.path.exists("highscore.txt"):
+        return 0 # Nếu chưa có file thì trả về 0
+    try:
+        with open("highscore.txt", "r") as f:
+            return int(f.read())
+    except:
+        return 0
+
+def save_high_score(new_score):
+    try:
+        with open("highscore.txt", "w") as f:
+            f.write(str(new_score))
+    except:
+        pass
 
 # --- CẤU HÌNH ---
 mp_drawing = mp.solutions.drawing_utils
