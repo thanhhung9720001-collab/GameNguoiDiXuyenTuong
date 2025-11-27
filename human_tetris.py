@@ -1,9 +1,9 @@
 """
-ASSIGNMENT 2 FINAL BALANCED: AI EXER-GAME
-Cập nhật cân bằng game:
-1. AI nhạy hơn (bắt được khi đứng xa hơn).
-2. Tiền chỉ ăn được bằng TAY (Không ăn bằng đầu/vai).
-3. Bom nhỏ lại và rơi chậm hơn (Dễ né khi đứng gần).
+ASSIGNMENT 2 MATRIX EDITION: AI EXER-GAME (FINAL FIX)
+Đã sửa lỗi:
+- Hiển thị đầy đủ màn hình GAME OVER.
+- Thêm hướng dẫn "Press R to Restart".
+- Cân bằng độ khó (Bom/Tiền).
 """
 import cv2
 import mediapipe as mp
@@ -27,7 +27,7 @@ def play_sound(type):
             winsound.Beep(500, 150); winsound.Beep(400, 150); winsound.Beep(300, 400)
     threading.Thread(target=run, daemon=True).start()
 
-# --- 2. HIỆU ỨNG ---
+# --- 2. HIỆU ỨNG CHỮ BAY ---
 floating_texts = [] 
 def add_floating_text(text, x, y, color=(0, 255, 0)):
     floating_texts.append({'text': text, 'pos': [x, y], 'timer': 30, 'color': color})
@@ -38,30 +38,25 @@ def update_and_draw_effects(img):
         if ft['timer'] <= 0: floating_texts.remove(ft)
         else: cv2.putText(img, ft['text'], tuple(ft['pos']), 1, 1.5, ft['color'], 3)
 
-# --- 3. QUẢN LÝ VẬT THỂ (ĐÃ CÂN BẰNG LẠI) ---
+# --- 3. QUẢN LÝ VẬT THỂ RƠI ---
 class ItemManager:
     def __init__(self):
         self.items = []
         self.spawn_timer = 0
     
     def update(self, img_w, img_h):
-        # Tốc độ ra vật thể chậm lại chút để đỡ loạn
         self.spawn_timer += 1
-        if self.spawn_timer > 60: # 60 khung hình mới ra 1 vật
+        if self.spawn_timer > 60: 
             self.spawn_timer = 0
             item_type = 'coin' if random.random() < 0.6 else 'bomb'
-            
-            # Cân bằng kích thước (Nhỏ lại để dễ né)
-            radius = 25 if item_type == 'coin' else 30 
-            
+            radius = 25 if item_type == 'coin' else 30
             self.items.append({
                 'x': random.randint(50, img_w - 50),
                 'y': -50,
                 'type': item_type,
                 'radius': radius,
-                'speed': random.randint(4, 9) # Rơi chậm hơn chút (Cũ là 5-12)
+                'speed': random.randint(4, 9)
             })
-
         for item in self.items[:]:
             item['y'] += item['speed']
             if item['y'] > img_h + 50: self.items.remove(item)
@@ -79,25 +74,14 @@ class ItemManager:
 
     def check_collision(self, landmarks, img_w, img_h):
         hit_info = {'score': 0, 'hit_bomb': False}
-        
-        # --- LUẬT CHƠI MỚI (QUAN TRỌNG) ---
-        # 15,16: Cổ tay | 19,20: Ngón trỏ
         hand_points = [15, 16, 19, 20] 
-        # 0: Mũi | 11,12: Vai
         body_points = [0, 11, 12] 
         
         for item in self.items[:]:
-            # Nếu là TIỀN: Chỉ kiểm tra va chạm với TAY
-            if item['type'] == 'coin':
-                check_points = hand_points
-            # Nếu là BOM: Kiểm tra va chạm với ĐẦU + VAI (Để bắt buộc phải né)
-            else:
-                check_points = body_points
-
+            check_points = hand_points if item['type'] == 'coin' else body_points
             for idx in check_points:
                 px = int(landmarks[idx].x * img_w)
                 py = int(landmarks[idx].y * img_h)
-                # Giảm vùng va chạm (-5) để đỡ bị oan
                 dist = math.sqrt((px - item['x'])**2 + (py - item['y'])**2)
                 
                 if dist < item['radius'] + 10: 
@@ -210,8 +194,6 @@ def reset_game():
 cap = cv2.VideoCapture(0)
 cv2.namedWindow('AI ExerGame Balanced', cv2.WINDOW_NORMAL)
 
-# Tinh chỉnh AI: model_complexity=1 (Mặc định) giúp cân bằng tốc độ và độ chính xác
-# min_detection_confidence=0.6: Giúp AI chắc chắn hơn mới nhận diện (đỡ nhận nhầm khi đứng xa)
 with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, model_complexity=1) as pose:
     while cap.isOpened():
         ret, frame = cap.read()
@@ -232,12 +214,14 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         h, w, _ = image.shape
 
+        # MENU
         if game_state == "MENU":
             cv2.rectangle(image, (0, h//2-100), (w, h//2+100), (0,0,0), -1)
             cv2.putText(image, "AI EXER-GAME", (w//2-250, h//2-20), 1, 3, (0,255,255), 5)
             if int(time.time()*2) % 2 == 0: cv2.putText(image, "PRESS SPACE TO START", (w//2-200, h//2+50), 1, 1, (255,255,255), 2)
             cv2.putText(image, f"TOP SCORE: {high_score}", (w//2-120, h//2+150), 1, 1, (255,215,0), 2)
 
+        # CALIBRATION
         elif game_state == "CALIBRATION":
              if results.pose_landmarks:
                 current_hip_y = (results.pose_landmarks.landmark[23].y + results.pose_landmarks.landmark[24].y) / 2
@@ -247,6 +231,7 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
                 if calibration_frames <= 0:
                     base_y = current_hip_y; game_state = "PLAYING"; new_round(); play_sound("score")
 
+        # PLAYING
         elif game_state == "PLAYING":
             if results.pose_landmarks:
                 landmarks = results.pose_landmarks.landmark
@@ -301,12 +286,22 @@ with mp_pose.Pose(min_detection_confidence=0.6, min_tracking_confidence=0.6, mod
                 cv2.putText(image, task_txt, (w//2 - 150, 100), 1, 1, (0, 255, 255), 2)
                 cv2.putText(image, "<3 " * lives, (20, 100), 1, 1, (0, 0, 255), 2)
 
+        # GAMEOVER (ĐÃ SỬA: Hiển thị hướng dẫn Restart)
         elif game_state == "GAMEOVER":
             overlay = image.copy(); cv2.rectangle(overlay, (0, 0), (w, h), (0,0,0), -1)
             image = cv2.addWeighted(overlay, 0.8, image, 0.2, 0)
-            cv2.putText(image, "GAME OVER", (w//2-180, h//2), 1, 3, (0,0,255), 5)
-            cv2.putText(image, f"SCORE: {score}", (w//2-100, h//2+60), 1, 2, (255,255,255), 2)
-            if score == high_score and score > 0: cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+120), 1, 1.5, (0,255,0), 3)
+            
+            # Chữ GAME OVER Viền đỏ
+            cv2.putText(image, "GAME OVER", (w//2-180, h//2-20), 1, 3, (0,0,255), 8) # Viền
+            cv2.putText(image, "GAME OVER", (w//2-180, h//2-20), 1, 3, (255,255,255), 2) # Ruột
+            
+            cv2.putText(image, f"SCORE: {score}", (w//2-100, h//2+50), 1, 2, (255,255,255), 2)
+            if score == high_score and score > 0: 
+                cv2.putText(image, "NEW RECORD!", (w//2-150, h//2+100), 1, 1.5, (0,255,0), 3)
+            
+            # HƯỚNG DẪN RESTART QUAN TRỌNG
+            if int(time.time()*2) % 2 == 0: # Nhấp nháy
+                cv2.putText(image, "PRESS 'R' TO RESTART", (w//2-180, h//2+160), 1, 1, (0,255,255), 2)
 
         update_and_draw_effects(image)
         cv2.imshow('AI ExerGame Balanced', image)
