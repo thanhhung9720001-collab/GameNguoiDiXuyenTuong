@@ -2,5 +2,3 @@
 
 * { box-sizing: border-box; }
 html, body { min-height: 100%; margin: 0; background: #08051d; }
-.game-shell { min-height: 100svh; }
-.game-frame { display: block; width: 100%; min-height: 100svh; border: 0; }
