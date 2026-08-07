@@ -2,82 +2,92 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#08051d" />
-    <meta name="description" content="Game vận động AI nhận diện tư thế qua webcam." />
-    <title>Người Đi Xuyên Tường — AI ExerGame</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Chakra+Petch:wght@600;700&display=swap" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#4ec0ca" />
+    <meta name="description" content="Flappy Bird điều khiển bằng động tác quạt hai tay qua webcam." />
+    <title>Flappy Bird — Quạt Tay Để Bay</title>
+    <link rel="icon" href="./assets/sprites/yellowbird-midflap.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="game-stage" aria-label="Khu vực chơi game">
-        <video id="camera" autoplay muted playsinline></video>
-        <canvas id="game-canvas" aria-label="Hình ảnh camera và khung nhận diện tư thế"></canvas>
-        <div class="scanlines" aria-hidden="true"></div>
+      <div class="stage" id="stage">
+        <canvas id="game-canvas" width="910" height="512" aria-label="Màn hình game Flappy Bird"></canvas>
 
-        <header class="hud top-hud">
-          <div class="brand"><span class="brand-mark">✦</span><span>AI EXERGAME</span></div>
-          <div class="status-pill" id="camera-status"><i></i> SẴN SÀNG</div>
-          <button class="sound-button" id="sound-toggle" aria-label="Bật hoặc tắt âm thanh">♬</button>
-        </header>
+        <!-- Khung webcam nhỏ ở góc dưới bên phải -->
+        <aside class="camera-pip" id="camera-pip" aria-label="Khung camera người chơi">
+          <video id="camera" autoplay muted playsinline></video>
+          <canvas id="camera-overlay"></canvas>
 
-        <div class="timer-wrap hidden" id="timer-wrap" aria-label="Thời gian còn lại">
-          <div class="timer-bar"><div id="timer-fill"></div></div>
+          <!--
+            Khung người để đứng vào, chỉ hiện ở bước canh vị trí.
+            Tay vẽ dang ngang chứ không buông thõng, để nhắc luôn tư thế quạt cánh và
+            nhắc người chơi chừa đủ chỗ hai bên cho tay vung.
+          -->
+          <svg class="camera-guide" id="camera-guide" viewBox="0 0 160 120" aria-hidden="true">
+            <circle cx="80" cy="30" r="14" />
+            <path d="M80 45 v33 M80 54 l-28 -6 M80 54 l28 -6 M80 78 l-13 30 M80 78 l13 30" />
+          </svg>
+
+          <p class="camera-countdown" id="camera-countdown" aria-live="off"></p>
+          <span class="camera-badge" id="camera-badge">CAMERA TẮT</span>
+        </aside>
+
+        <!-- Lớp phủ điều khiển -->
+        <div class="overlay" id="overlay">
+          <button class="pill-button" id="camera-button" type="button">BẬT CAMERA</button>
+          <p class="hint" id="hint">Nhấn Space / chạm màn hình để vỗ cánh</p>
         </div>
 
-        <section class="play-hud hidden" id="play-hud">
-          <div class="stat-card"><span>ĐIỂM</span><strong id="score">0000</strong></div>
-          <div class="task-card"><span class="eyebrow">TƯ THẾ MỤC TIÊU</span><strong id="pose-name">SẴN SÀNG</strong><small id="pose-hint">Đứng vào khung để hiệu chỉnh</small><small id="lives">CÒN 3 LƯỢT SAI</small></div>
-          <div class="stat-card right"><span>COMBO</span><strong id="combo">×0</strong></div>
-        </section>
+        <!-- Khung chung cho hai lúc: trước khi chơi (nhập tên) và sau khi thua (kết quả) -->
+        <section class="menu" id="menu-screen" aria-label="Bảng xếp hạng">
+          <div class="menu-panel">
+            <div class="board">
+              <header class="board-head">
+                <h2>BẢNG XẾP HẠNG</h2>
+                <button type="button" id="clear-scores" class="link-button">XOÁ TẤT CẢ</button>
+              </header>
+              <ol class="board-list" id="board-list"></ol>
+              <p class="board-empty" id="board-empty">Chưa có ai chơi.<br />Bạn là người đầu tiên!</p>
+            </div>
 
-        <section class="screen active" id="menu-screen">
-          <div class="title-glow">BẠN CÓ THỂ</div>
-          <h1>ĐI XUYÊN<br /><em>TƯỜNG?</em></h1>
-          <p>Đưa cơ thể vào đúng tư thế, vượt qua tường neon và chinh phục điểm cao.</p>
-          <button class="primary-button" id="play-button">CHƠI NGAY <span>→</span></button>
-          <button class="text-button" id="how-button">Cách chơi</button>
-          <div class="privacy-note">⌁ Camera chỉ được xử lý trên thiết bị của bạn</div>
-        </section>
+            <div class="side">
+              <!-- Chế độ 1: nhập tên -->
+              <form class="join" id="join-form" autocomplete="off">
+                <h1 class="join-title">FLAPPY BIRD</h1>
+                <p class="join-sub">Quạt hai tay như cánh chim</p>
+                <label class="join-label" for="player-name">TÊN CỦA BẠN</label>
+                <input
+                  class="join-input"
+                  id="player-name"
+                  name="name"
+                  type="text"
+                  maxlength="12"
+                  placeholder="Biệt danh"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                />
+                <button class="pill-button" id="start-button" type="submit">CHƠI</button>
+                <p class="join-note">Chỉ dùng biệt danh — bảng xếp hạng hiện công khai.</p>
+              </form>
 
-        <section class="screen" id="permission-screen">
-          <div class="icon-orb">◉</div>
-          <h2>CHUẨN BỊ<br />SÂN CHƠI</h2>
-          <p>Cho phép sử dụng camera để AI theo dõi tư thế của bạn theo thời gian thực.</p>
-          <button class="primary-button" id="camera-button">BẬT CAMERA <span>↗</span></button>
-          <button class="text-button back-button">Quay lại</button>
+              <!-- Chế độ 2: kết quả sau khi thua -->
+              <div class="result" id="result-panel" hidden>
+                <img class="result-banner" id="result-banner" alt="Game Over" />
+                <p class="result-name" id="result-name"></p>
+                <div class="result-stats">
+                  <div class="stat"><span>ĐIỂM</span><strong id="result-score">0</strong></div>
+                  <div class="stat"><span>HẠNG</span><strong id="result-rank">–</strong></div>
+                </div>
+                <p class="result-note" id="result-note"></p>
+                <button class="pill-button" id="replay-button" type="button">CHƠI LẠI</button>
+                <button class="pill-button ghost" id="change-player" type="button">ĐỔI NGƯỜI</button>
+              </div>
+            </div>
+          </div>
         </section>
-
-        <section class="screen" id="calibration-screen">
-          <div class="calibration-ring"><span id="calibration-count">3</span></div>
-          <h2>HIỆU CHỈNH<br />TƯ THẾ</h2>
-          <p>Đứng thẳng, để toàn thân trong khung hình.</p>
-        </section>
-
-        <section class="screen" id="gameover-screen">
-          <div class="gameover-label">LƯỢT CHƠI KẾT THÚC</div>
-          <h2>ĐỈNH<br /><em>QUÁ!</em></h2>
-          <div class="result-score"><span>ĐIỂM CỦA BẠN</span><strong id="final-score">0000</strong></div>
-          <p id="record-note">Hãy thử thêm một lượt để phá kỷ lục.</p>
-          <button class="primary-button" id="again-button">CHƠI LẠI <span>↻</span></button>
-          <button class="text-button back-button">Về trang chủ</button>
-        </section>
-
-        <aside class="instruction-modal hidden" id="instruction-modal" role="dialog" aria-modal="true" aria-labelledby="instruction-title">
-          <button class="close-button" id="close-instructions" aria-label="Đóng">×</button>
-          <span class="eyebrow">HƯỚNG DẪN NHANH</span>
-          <h2 id="instruction-title">SẴN SÀNG<br />VẬN ĐỘNG</h2>
-          <ol>
-            <li>Đứng đủ sáng, cách camera khoảng 1,5–2 m.</li>
-            <li>Quan sát tư thế mục tiêu khi tường đang tiến đến.</li>
-            <li>Giữ đúng tư thế khi thanh thời gian kết thúc để nhận combo.</li>
-          </ol>
-          <button class="primary-button" id="instruction-play">BẮT ĐẦU <span>→</span></button>
-        </aside>
-      </section>
+      </div>
     </main>
     <script type="module" src="./app.js"></script>
   </body>
