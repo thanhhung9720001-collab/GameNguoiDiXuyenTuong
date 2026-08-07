@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#4ec0ca" />
+    <meta name="description" content="Flappy Bird điều khiển bằng động tác quạt hai tay qua webcam." />
+    <title>Flappy Bird — Quạt Tay Để Bay</title>
+    <link rel="icon" href="./assets/sprites/yellowbird-midflap.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <div class="stage" id="stage">
+        <canvas id="game-canvas" width="910" height="512" aria-label="Màn hình game Flappy Bird"></canvas>
+
+        <!-- Khung webcam nhỏ ở góc dưới bên phải -->
+        <aside class="camera-pip" id="camera-pip" aria-label="Khung camera người chơi">
+          <video id="camera" autoplay muted playsinline></video>
+          <canvas id="camera-overlay"></canvas>
+
+          <!--
+            Khung người để đứng vào, chỉ hiện ở bước canh vị trí.
+            Tay vẽ dang ngang chứ không buông thõng, để nhắc luôn tư thế quạt cánh và
+            nhắc người chơi chừa đủ chỗ hai bên cho tay vung.
+          -->
+          <svg class="camera-guide" id="camera-guide" viewBox="0 0 160 120" aria-hidden="true">
+            <circle cx="80" cy="30" r="14" />
+            <path d="M80 45 v33 M80 54 l-28 -6 M80 54 l28 -6 M80 78 l-13 30 M80 78 l13 30" />
+          </svg>
+
+          <p class="camera-countdown" id="camera-countdown" aria-live="off"></p>
+          <span class="camera-badge" id="camera-badge">CAMERA TẮT</span>
+        </aside>
+
+        <!-- Lớp phủ điều khiển -->
+        <div class="overlay" id="overlay">
+          <button class="pill-button" id="camera-button" type="button">BẬT CAMERA</button>
+          <p class="hint" id="hint">Nhấn Space / chạm màn hình để vỗ cánh</p>
+        </div>
+
+        <!-- Khung chung cho hai lúc: trước khi chơi (nhập tên) và sau khi thua (kết quả) -->
+        <section class="menu" id="menu-screen" aria-label="Bảng xếp hạng">
+          <div class="menu-panel">
+            <div class="board">
+              <header class="board-head">
+                <h2>BẢNG XẾP HẠNG</h2>
+                <button type="button" id="clear-scores" class="link-button">XOÁ TẤT CẢ</button>
+              </header>
+              <ol class="board-list" id="board-list"></ol>
+              <p class="board-empty" id="board-empty">Chưa có ai chơi.<br />Bạn là người đầu tiên!</p>
+            </div>
+
+            <div class="side">
+              <!-- Chế độ 1: nhập tên -->
+              <form class="join" id="join-form" autocomplete="off">
+                <h1 class="join-title">FLAPPY BIRD</h1>
+                <p class="join-sub">Quạt hai tay như cánh chim</p>
+                <label class="join-label" for="player-name">TÊN CỦA BẠN</label>
+                <input
+                  class="join-input"
+                  id="player-name"
+                  name="name"
+                  type="text"
+                  maxlength="12"
+                  placeholder="Biệt danh"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                />
+                <button class="pill-button" id="start-button" type="submit">CHƠI</button>
+                <p class="join-note">Chỉ dùng biệt danh — bảng xếp hạng hiện công khai.</p>
+              </form>
+
+              <!-- Chế độ 2: kết quả sau khi thua -->
+              <div class="result" id="result-panel" hidden>
+                <img class="result-banner" id="result-banner" alt="Game Over" />
+                <p class="result-name" id="result-name"></p>
+                <div class="result-stats">
+                  <div class="stat"><span>ĐIỂM</span><strong id="result-score">0</strong></div>
+                  <div class="stat"><span>HẠNG</span><strong id="result-rank">–</strong></div>
+                </div>
+                <p class="result-note" id="result-note"></p>
+                <button class="pill-button" id="replay-button" type="button">CHƠI LẠI</button>
+                <button class="pill-button ghost" id="change-player" type="button">ĐỔI NGƯỜI</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

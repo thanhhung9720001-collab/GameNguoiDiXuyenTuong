@@ -1,0 +1,9 @@
+# Trạng thái của công cụ hỗ trợ, không phải mã dự án
+.omc/
+
+# Môi trường ảo Python — tàn dư của prototype cũ, không còn dùng
+.venv/
+
+# Hệ điều hành
+.DS_Store
+Thumbs.db

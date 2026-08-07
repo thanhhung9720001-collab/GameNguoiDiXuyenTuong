@@ -1,0 +1,444 @@
+/* Flappy Bird bản màn hình ngang 16:9 (910x512). Chiều cao giữ nguyên 512 như sprite
+   gốc nên mọi hình vẽ ở đúng kích thước pixel gốc, chỉ mở rộng bề ngang. */
+:root { --sky:#4ec0ca; --ground:#ded895; --ink:#533847; }
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #2b2b2b;
+  color: #fff;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+.app-shell {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(#1d2b34, #0f171c);
+}
+
+/* Sân khấu giữ đúng tỉ lệ 910:512 và được scale bằng JS. */
+.stage {
+  position: relative;
+  width: 910px;
+  height: 512px;
+  transform-origin: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  background: var(--sky);
+}
+
+/* Khung webcam nhỏ, góc dưới bên phải. */
+.camera-pip {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 160px;
+  height: 120px;
+  border: 3px solid rgba(255, 255, 255, .9);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, .55);
+  display: grid;
+  place-items: center;
+  z-index: 3;
+}
+
+.camera-pip video,
+.camera-pip #camera-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* soi gương cho tự nhiên */
+}
+
+.camera-pip video { display: none; }
+.camera-pip.live video { display: block; }
+
+/* Khi camera đang chạy, chữ trạng thái nằm đè dưới đáy khung thay vì giữa. */
+.camera-badge {
+  position: relative;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: rgba(255, 255, 255, .8);
+  text-align: center;
+}
+
+.camera-pip.live .camera-badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 4px;
+  font-size: 10px;
+  background: rgba(0, 0, 0, .6);
+  color: #fff;
+}
+
+.camera-badge[data-kind="ready"] { color: #7dffa8; }
+.camera-badge[data-kind="warn"] { color: #ffcf5c; }
+.camera-badge[data-kind="busy"] { color: #9fd8ff; }
+
+/*
+ * Bước canh vị trí: khung camera phóng to gần kín màn hình rồi thu về góc khi vào
+ * game. Khung 160×120 ở góc quá nhỏ để người đứng cách 2m tự canh được mình.
+ */
+.camera-pip {
+  transition: width .45s ease, height .45s ease, right .45s ease, bottom .45s ease;
+}
+
+.camera-pip.framing {
+  right: 215px;
+  bottom: 76px;
+  width: 480px;
+  height: 360px;
+  border-width: 4px;
+  z-index: 5;
+}
+
+.camera-guide,
+.camera-countdown { display: none; }
+
+.camera-pip.framing .camera-guide {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: rgba(255, 255, 255, .75);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 6 5;
+  transform: scaleX(-1); /* khớp với khung camera đang soi gương */
+}
+
+/* Sắp đạt: chuyển vàng để người chơi biết mình đang đi đúng hướng. */
+.camera-pip.framing.near .camera-guide { stroke: #ffcf5c; stroke-dasharray: 10 4; }
+
+/* Đứng đúng chỗ rồi thì khung chuyển xanh và thôi nhấp nháy. */
+.camera-pip.framing.aligned .camera-guide {
+  stroke: #7dffa8;
+  stroke-dasharray: none;
+  stroke-width: 3;
+}
+
+.camera-pip.framing .camera-countdown {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  font-size: 130px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 6px 0 rgba(0, 0, 0, .5);
+}
+
+.camera-pip.framing .camera-countdown:empty { display: none; }
+
+.camera-pip.framing .camera-badge {
+  bottom: 0;
+  padding: 6px 8px;
+  font-size: 14px;
+  letter-spacing: .08em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .camera-pip { transition: none; }
+}
+
+/* Lớp phủ điều khiển. */
+.overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 78px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.overlay > * { pointer-events: auto; }
+
+.pill-button {
+  border: 2px solid rgba(0, 0, 0, .35);
+  border-radius: 999px;
+  padding: 7px 16px;
+  background: #f8e16c;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .3);
+}
+
+.pill-button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0, 0, 0, .3); }
+.pill-button[hidden] { display: none; }
+
+.pill-button.ghost { background: #fff; }
+
+.hint {
+  margin: 0;
+  font-size: 10px;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .55);
+}
+
+/* ---------- Khung bảng xếp hạng (dùng cho cả lúc nhập tên và lúc thua) ---------- */
+
+.menu {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 14, 26, .68);
+}
+
+.menu[hidden] { display: none; }
+
+/*
+ * Viền kép kiểu giao diện máy thùng: một khung ngoài màu nâu đậm, một gờ sáng lẩn vào
+ * trong. Dựng bằng box-shadow xếp lớp nên không tốn thêm thẻ HTML nào.
+ */
+.menu-panel {
+  display: grid;
+  grid-template-columns: 320px 226px;
+  gap: 16px;
+  padding: 16px;
+  background: #ded895;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 3px #543847,          /* viền trong */
+    0 0 0 6px #b5ad74,          /* khe sáng */
+    0 0 0 9px #543847,          /* viền ngoài */
+    0 12px 0 9px rgba(0, 0, 0, .35),
+    0 26px 40px rgba(0, 0, 0, .5);
+}
+
+.board { display: flex; flex-direction: column; min-height: 268px; }
+
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 7px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid rgba(84, 56, 71, .35);
+}
+
+.board-head h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: .1em;
+  color: var(--ink);
+}
+
+.link-button {
+  border: 0;
+  padding: 2px 4px;
+  background: none;
+  font-size: 9px;
+  letter-spacing: .05em;
+  color: #8a6b57;
+  text-decoration: underline;
+}
+
+.link-button:hover { color: #c0392b; }
+
+.board-list {
+  flex: 1;
+  margin: 0;
+  padding: 0 2px 0 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  max-height: 244px;
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .5);
+  box-shadow: inset 0 0 0 1px rgba(84, 56, 71, .18);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* Top 3 đeo huy chương — nhìn phát biết ngay ai đang dẫn. */
+.board-row[data-rank="1"] { background: linear-gradient(#ffe9a8, #f5c518); box-shadow: inset 0 0 0 2px #c9971a; }
+.board-row[data-rank="2"] { background: linear-gradient(#f4f4f4, #cfcfcf); box-shadow: inset 0 0 0 2px #9a9a9a; }
+.board-row[data-rank="3"] { background: linear-gradient(#f0cfae, #d09055); box-shadow: inset 0 0 0 2px #a26a34; }
+
+.board-row.is-you { outline: 2px dashed #c0392b; outline-offset: 1px; }
+
+.board-rank {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(84, 56, 71, .16);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.board-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.board-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-remove {
+  border: 0;
+  padding: 0;
+  background: none;
+  font-size: 13px;
+  line-height: 1;
+  color: rgba(84, 56, 71, .4);
+  opacity: 0;
+}
+
+.board-row:hover .board-remove { opacity: 1; }
+.board-remove:hover { color: #c0392b; }
+
+.board-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.8;
+  text-align: center;
+  color: #8a6b57;
+}
+
+.board-empty[hidden], .board-list[hidden] { display: none; }
+
+/* ---------- Cột phải ---------- */
+
+.side {
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+  border-left: 2px dashed rgba(84, 56, 71, .35);
+}
+
+.join, .result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.join[hidden], .result[hidden] { display: none; }
+
+.join-title {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: .03em;
+  color: var(--ink);
+}
+
+.join-sub { margin: 0 0 6px; font-size: 10px; color: #8a6b57; }
+
+.join-label { font-size: 9px; letter-spacing: .1em; color: #8a6b57; }
+
+.join-input {
+  padding: 8px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 5px;
+  background: #fffdf0;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.join-input:focus {
+  outline: 0;
+  border-color: #e5a400;
+  box-shadow: 0 0 0 3px rgba(229, 164, 0, .35);
+}
+
+.join-note { margin: 2px 0 0; font-size: 9px; line-height: 1.5; color: #8a6b57; }
+
+/* Chế độ kết quả */
+
+.result-banner {
+  width: 100%;
+  max-width: 192px;
+  margin: 0 auto 2px;
+  image-rendering: pixelated;
+}
+
+.result-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 2px; }
+
+.stat {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 6px 4px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .55);
+  box-shadow: inset 0 0 0 2px rgba(84, 56, 71, .25);
+}
+
+.stat span { font-size: 8px; letter-spacing: .1em; color: #8a6b57; }
+.stat strong { font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.result-note {
+  margin: 0 0 2px;
+  min-height: 13px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  color: #c9971a;
+}
+
